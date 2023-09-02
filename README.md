@@ -28,3 +28,6 @@ arduinoWebSockets from https://github.com/Links2004/arduinoWebSockets<br>
 
 Schematics:<br>
 <img src="ESP32GOscillo2.png">
+
+Description is here, although it is written in Japanese language:<br>
+http://harahore.g2.xrea.com/ESP32/ESP32WebOscillo.html
