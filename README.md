@@ -25,3 +25,6 @@ Adafruit_SSD1306<br>
 Adafruit_SH110X<br>
 arduinoFFT by Enrique Condes 1.6.1<br>
 arduinoWebSockets from https://github.com/Links2004/arduinoWebSockets<br>
+
+Schematics:<br>
+<img src="ESP32GOscillo2.png">
