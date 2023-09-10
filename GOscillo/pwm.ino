@@ -85,7 +85,7 @@ void disp_pulse_frq(void) {
     display.setCursor(66, 56);
     display.print(freq, 0);
   }
-  display.print(F("Hz"));
+  display.print("Hz");
   display.setCursor(72, 48);
 //  display.print(duty*100.0/256.0, 1); display.print('%');
   display.print(duty*0.390625, 1); display.print('%');

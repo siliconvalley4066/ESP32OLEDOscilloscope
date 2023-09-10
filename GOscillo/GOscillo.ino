@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.27
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.28
  * The max realtime sampling rates are 10ksps with 2 channels and 20ksps with a channel.
  * In the I2S DMA mode, it can be set up to 500ksps, however effective samplig rate is 200ksps.
  * + Pulse Generator
@@ -113,6 +113,7 @@ bool full_screen = false;
 byte info_mode = 3; // Text information display mode
 bool dac_cw_mode = false;
 int trigger_ad;
+bool wfft;
 
 //#define LED_BUILTIN 2
 #define LEFTPIN   12  // LEFT
@@ -164,6 +165,7 @@ void setup(){
   loadEEPROM();                         // read last settings from EEPROM
 //  set_default();
   menu = item >> 3;
+  wfft = fft_mode;
   display.clearDisplay();
 //  DrawGrid();
 //  DrawText();
@@ -442,9 +444,9 @@ void menu2_sw(byte sw) {
     break;
   case 2: // FFT mode
     if (sw == 3) {        // ON
-      fft_mode = true;
+      wfft = true;
     } else if (sw == 7) { // OFF
-      fft_mode = false;
+      wfft = false;
     }
     break;
   case 3: // Frequency and Duty display
@@ -577,7 +579,7 @@ void increment_item() {
   ++item;
   if (item > ITEM_MAX) item = 0;
   if (item == 3) item = 4;      // skip real/DMA
-  if (item < 16 || item > 18) fft_mode = false; // exit FFT mode
+  if (item < 16 || item > 18) wfft = false; // exit FFT mode
   menu = item >> 3;
 }
 
@@ -585,7 +587,7 @@ void decrement_item() {
   if (item > 0) --item;
   else item = ITEM_MAX;
   if (item == 3) item = 2;      // skip real/DMA
-  if (item < 16 || item > 18) fft_mode = false; // exit FFT mode
+  if (item < 16 || item > 18) wfft = false; // exit FFT mode
   menu = item >> 3;
 }
 
@@ -627,46 +629,46 @@ void DrawText() {
     if (ch0_mode != MODE_OFF) {
       display_range(range0);
     } else {
-      display.print(F("CH2")); display_ac(CH1DCSW);
+      display.print("CH2"); display_ac(CH1DCSW);
     }
     set_line_color(1);
     if (ch1_mode != MODE_OFF && rate >= RATE_DUAL) {
       display_range(range1);
     } else {
-      display.print(F("CH1")); display_ac(CH0DCSW);
+      display.print("CH1"); display_ac(CH0DCSW);
     }
     set_line_color(2);
     display_rate();
     set_line_color(3);
-    if (rate > RATE_DMA) display.print(F("real"));
-    else display.print(F("DMA"));
+    if (rate > RATE_DMA) display.print("real");
+    else display.print("DMA");
     set_line_color(4);
     display_trig_mode();
     set_line_color(5);
-    display.print(trig_ch == ad_ch0 ? F("TG1") : F("TG2")); 
+    display.print(trig_ch == ad_ch0 ? "TG1" : "TG2"); 
     display.print(trig_edge == TRIG_E_UP ? char(0x18) : char(0x19)); 
     set_line_color(6);
-    display.print(F("Tlev")); 
+    display.print("Tlev"); 
     set_line_color(7);
-    display.print(Start ? F("RUN") : F("HOLD")); 
+    display.print(Start ? "RUN" : "HOLD"); 
     break;
   case 1:
     set_line_color(0);
-    display.print(F("CH1")); display_ac(CH0DCSW);
+    display.print("CH1"); display_ac(CH0DCSW);
     set_line_color(1);
     display_mode(ch0_mode);
     set_line_color(2);
     display_range(range0);
     set_line_color(3);
-    display.print(F("OFS1")); 
+    display.print("OFS1"); 
     set_line_color(4);
-    display.print(F("CH2")); display_ac(CH1DCSW);
+    display.print("CH2"); display_ac(CH1DCSW);
     set_line_color(5);
     display_mode(ch1_mode);
     set_line_color(6);
     display_range(range1);
     set_line_color(7);
-    display.print(F("OFS2"));
+    display.print("OFS2");
     break;
   case 2:
     set_line_color(0);
@@ -675,17 +677,17 @@ void DrawText() {
     display_rate();
     set_line_color(2);
     if (!fft_mode) {
-      display.print(F("FFT")); 
+      display.print("FFT"); 
       set_line_color(3);
-      display.print(F("FREQ")); 
+      display.print("FREQ"); 
       set_line_color(4);
-      display.print(F("VOLT")); 
+      display.print("VOLT"); 
       set_line_color(5);
-      display.print(F("PWM")); 
+      display.print("PWM"); 
       set_line_color(6);
-      display.print(F("DUTY")); 
+      display.print("DUTY"); 
       set_line_color(7);
-      display.print(F("FREQ"));
+      display.print("FREQ");
       if (pulse_mode && (item > 20 && item < 24))
         disp_pulse_frq();
     }
@@ -696,14 +698,14 @@ void DrawText() {
     set_line_color(1);
     display_rate();
     set_line_color(2);
-    display.print(F("DDS"));
+    display.print("DDS");
     set_line_color(3);
     disp_dds_wave();
     set_line_color(4);
-    display.print(F("FREQ"));
+    display.print("FREQ");
     if (dds_mode) disp_dds_freq();
 //    set_line_color(5);
-//    display.print(F("FCNT"));
+//    display.print("FCNT");
 //    fcount_disp();
     break;
   }
@@ -729,7 +731,7 @@ void fcount_disp() {
 //    fcount = fcount * freq_ratio; // compensate the ceramic osc
 //  }
 //  display.setTextColor(TXTCOLOR, BGCOLOR); display.setCursor(74, 48);
-//  display.print(fcount); display.print(F("Hz"));
+//  display.print(fcount); display.print("Hz");
 }
 
 void fcount_close() {
@@ -917,8 +919,6 @@ void loop() {
   if (rate > RATE_DMA) {
     set_trigger_ad();
     auto_time = pow(10, rate / 3);
-    if (rate < 7)
-      auto_time *= 10;
     if (trig_mode != TRIG_SCAN) {
       unsigned long st = millis();
       oad = adc1_get_raw((adc1_channel_t)trig_ch)&0xfffc;
@@ -1012,6 +1012,9 @@ void loop() {
 
 void draw_screen() {
   display.clearDisplay();
+  if (wfft != fft_mode) {
+    fft_mode = wfft;
+  }
   if (fft_mode) {
     DrawText();
     plotFFT();
@@ -1040,7 +1043,7 @@ void measure_frequency() {
     display.print(waveFreq/1000.0, 0);
     display.print('k');
   }
-  display.print(F("Hz"));
+  display.print("Hz");
   if (fft_mode) return;
   display.setCursor(textINFO + 12, txtLINE1);
   display.print(waveDuty);  display.print('%');
@@ -1062,11 +1065,11 @@ void measure_voltage() {
   float vmax = VRF * advalue(dmax, VREF[range0], ch0_mode, ch0_off) / 4096.0;
   float vmin = VRF * advalue(dmin, VREF[range0], ch0_mode, ch0_off) / 4096.0;
   display.setCursor(textINFO, txtLINE2);
-  display.print(F("max"));  display.print(vmax); if (vmax >= 0.0) display.print('V');
+  display.print("max");  display.print(vmax); if (vmax >= 0.0) display.print('V');
   display.setCursor(textINFO, txtLINE3);
-  display.print(F("avr"));  display.print(vavr); if (vavr >= 0.0) display.print('V');
+  display.print("avr");  display.print(vavr); if (vavr >= 0.0) display.print('V');
   display.setCursor(textINFO, txtLINE4);
-  display.print(F("min"));  display.print(vmin); if (vmin >= 0.0) display.print('V');
+  display.print("min");  display.print(vmin); if (vmin >= 0.0) display.print('V');
 }
 
 void sample_dual_us(unsigned int r) { // dual channel. r > 67
@@ -1167,7 +1170,7 @@ void draw_scale() {
   int ylim = 56;
   float fhref, nyquist;
   display.setTextColor(TXTCOLOR);
-  display.setCursor(0, ylim); display.print(F("0Hz")); 
+  display.setCursor(0, ylim); display.print("0Hz"); 
   fhref = (float)HREF[rate];
   nyquist = 5.0e6 / fhref; // Nyquist frequency
   long inyquist = nyquist;
