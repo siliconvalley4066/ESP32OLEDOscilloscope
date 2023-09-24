@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.28
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.29
  * The max realtime sampling rates are 10ksps with 2 channels and 20ksps with a channel.
  * In the I2S DMA mode, it can be set up to 500ksps, however effective samplig rate is 200ksps.
  * + Pulse Generator
@@ -113,7 +113,7 @@ bool full_screen = false;
 byte info_mode = 3; // Text information display mode
 bool dac_cw_mode = false;
 int trigger_ad;
-bool wfft;
+volatile bool wfft, wdds;
 
 //#define LED_BUILTIN 2
 #define LEFTPIN   12  // LEFT
@@ -166,6 +166,7 @@ void setup(){
 //  set_default();
   menu = item >> 3;
   wfft = fft_mode;
+  wdds = dds_mode;
   display.clearDisplay();
 //  DrawGrid();
 //  DrawText();
@@ -239,7 +240,7 @@ void CheckSW() {
   saveTimer = 5000;     // set EEPROM save timer to 5 secnd
   if (sw == 12) {
     full_screen = !full_screen;
-    display.fillRect(DISPTXT,0,25,64, BGCOLOR);  // clear text area that will be drawn below 
+    display.fillRect(DISPLNG + 1,0,27,64, BGCOLOR); // clear text area that will be drawn below 
   } else {
     switch (menu) {
     case 0:
@@ -532,10 +533,10 @@ void menu3_sw(byte sw) {
   case 2: // DDS
     if (sw == 3) {        // +
       dds_setup();
-      dds_mode = true;
+      dds_mode = wdds = true;
     } else if (sw == 7) { // -
       dds_close();
-      dds_mode = false;
+      dds_mode = wdds = false;
     }
     break;
   case 3: // WAVE
@@ -621,7 +622,7 @@ void DrawGrid() {
 }
 
 void DrawText() {
-  display.fillRect(DISPTXT,0,25,64, BGCOLOR); // clear text area that will be drawn below 
+  display.fillRect(DISPLNG+1,0,27,64, BGCOLOR); // clear text area that will be drawn below 
 
   switch (menu) {
   case 0:
@@ -909,7 +910,7 @@ void set_trigger_ad() {
     trigger_ad = advalue(trig_lv, VREF[range1], ch1_mode, ch1_off);
   }
 }
-#define LED_BUILTIN 2
+
 void loop() {
   int oad, ad;
   unsigned long auto_time;
@@ -1008,6 +1009,14 @@ void loop() {
     Start = false;
   CheckSW();
   saveEEPROM();                         // save settings to EEPROM if necessary
+  if (wdds != dds_mode) {
+    if (wdds) {
+      dds_setup();
+    } else {
+      dds_close();
+    }
+    dds_mode = wdds;
+  }
 }
 
 void draw_screen() {
@@ -1026,6 +1035,7 @@ void draw_screen() {
     if (ch1_mode == MODE_OFF) payload[SAMPLES] = -1;
   }
   xTaskNotify(taskHandle, 0, eNoAction);  // notify Websocket server task
+  delay(10);    // wait Web task to send it (adhoc fix)
   display.display();
 }
 
