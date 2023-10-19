@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.29
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.30
  * The max realtime sampling rates are 10ksps with 2 channels and 20ksps with a channel.
  * In the I2S DMA mode, it can be set up to 500ksps, however effective samplig rate is 200ksps.
  * + Pulse Generator
@@ -105,7 +105,7 @@ byte menu = 0;      // Default menu
 short ch0_off = 0, ch1_off = 400;
 byte data[2][SAMPLES];                  // keep the number of channels buffer
 uint16_t cap_buf[NSAMP], cap_buf1[SAMPLES];
-uint16_t payload[SAMPLES*2];
+uint16_t payload[SAMPLES*2+2];
 byte odat00, odat01, odat10, odat11;    // old data buffer for erase
 byte sample=0;                          // index for double buffer
 bool fft_mode = false, pulse_mode = false, dds_mode = false, fcount_mode = false;
