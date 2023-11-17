@@ -2,6 +2,7 @@
 ESP32 Oscilloscope for OLED and wireless WEB display
 
 <img src="DSC00021.jpg">
+<img src="ESP32WEBOLED.jpg">
 
 This displays an oscilloscope screen both on a 128x64 OLED and also on the WEB page simultaneusly.
 The settings are controled by four tactile switches and also on the WEB page.
