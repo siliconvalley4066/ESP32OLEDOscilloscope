@@ -26,16 +26,6 @@ esp32 by Espressif Systems version 2.0.11<br>
 CPU speed 240 MHz<br>
 </p>
 
-For WEB operations, edit the source code WebTask.ino and replace your Access Point and the password.
-<pre>
-Edit:
-const char* ssid = "XXXX";
-const char* pass = "YYYY";
-To:
-const char* ssid = "Your Access Point";
-const char* pass = "Your Password";
-</pre>
-
 Libraries:<br>
 Adafruit_SSD1306<br>
 Adafruit_SH110X<br>
@@ -46,6 +36,16 @@ arduinoWebSockets from https://github.com/Links2004/arduinoWebSockets<br>
 8usec/div range is 5 times magnification at 250ksps.<br>
 20usec/div range is 2 times magnification at 250ksps.<br>
 The magnification applies sin(x)/x interpolation.
+
+For WEB operations, edit the source code WebTask.ino and replace your Access Point and the password.
+<pre>
+Edit:
+const char* ssid = "XXXX";
+const char* pass = "YYYY";
+To:
+const char* ssid = "Your Access Point";
+const char* pass = "Your Password";
+</pre>
 
 Schematics:<br>
 <img src="ESP32GOscillo2.png">
