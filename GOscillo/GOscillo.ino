@@ -1,7 +1,7 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.31
- * The max realtime sampling rates are 10ksps with 2 channels and 20ksps with a channel.
- * In the I2S DMA mode, it can be set up to 500ksps, however effective samplig rate is 200ksps.
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.32
+ * The max software loop sampling rates are 10ksps with 2 channels and 20ksps with a channel.
+ * In the I2S DMA mode, it can be set up to 250ksps.
  * + Pulse Generator
  * + PWM DDS Function Generator (23 waveforms)
  * Copyright (c) 2023, Siliconvalley4066
@@ -33,7 +33,9 @@ Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, 
 #include <EEPROM.h>
 #include "arduinoFFT.h"
 #define FFT_N 128
-arduinoFFT FFT = arduinoFFT();  // Create FFT object
+double vReal[FFT_N]; // Real part array, actually float type
+double vImag[FFT_N]; // Imaginary part array
+ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, FFT_N, 1.0);  // Create FFT object
 
 #define txtLINE0   0
 #define txtLINE1   8
@@ -89,9 +91,10 @@ const int TRIG_E_DN = 1;
 #define RATE_DMA 5
 #define RATE_DUAL 7
 #define RATE_ROLL 15
+#define RATE_MAG 2
 #define ITEM_MAX 29
-const char Rates[RATE_NUM][5] PROGMEM = {"20us", "40us", "100u", "133u", "200u", "400u", "500u", " 1ms", " 2ms", " 5ms", "10ms", "20ms", "50ms", "0.1s", "0.2s", "0.5s", " 1s ", " 2s ", " 5s ", " 10s"};
-const unsigned long HREF[] PROGMEM = {20, 40, 100, 133, 200, 400, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000};
+const char Rates[RATE_NUM][5] PROGMEM = {" 4us", " 8us", "20us", "40us", "100u", "200u", "500u", " 1ms", " 2ms", " 5ms", "10ms", "20ms", "50ms", "0.1s", "0.2s", "0.5s", " 1s ", " 2s ", " 5s ", " 10s"};
+const unsigned long HREF[] PROGMEM = {40, 40, 40, 40, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000};
 #define RANGE_MIN 0
 #define RANGE_MAX 4
 #define VRF 3.3
@@ -650,7 +653,8 @@ void DrawText() {
     display_rate();
     set_line_color(3);
     if (rate > RATE_DMA) display.print("real");
-    else display.print("DMA");
+    else if (rate > RATE_MAG) display.print("DMA");
+    else display.print("MAG");
     set_line_color(4);
     display_trig_mode();
     set_line_color(5);
@@ -855,8 +859,9 @@ void scaleDataArray(byte ad_ch, int trig_point)
 {
   byte *pdata, ch_mode, range;
   short ch_off;
-  uint16_t *idata, *qdata;
+  uint16_t *idata, *qdata, *rdata;
   long a, b;
+  int ch;
 
   if (ad_ch == ad_ch1) {
     ch_off = ch1_off;
@@ -864,14 +869,16 @@ void scaleDataArray(byte ad_ch, int trig_point)
     range = range1;
     pdata = data[1];
     idata = &cap_buf1[trig_point];
-    qdata = payload+SAMPLES;
+    qdata = rdata = payload+SAMPLES;
+    ch = 1;
   } else {
     ch_off = ch0_off;
     ch_mode = ch0_mode;
     range = range0;
     pdata = data[0];
     idata = &cap_buf[trig_point];
-    qdata = payload;
+    qdata = rdata = payload;
+    ch = 0;
   }
   for (int i = 0; i < SAMPLES; i++) {
     *idata = adc_linearlize(*idata);
@@ -887,6 +894,20 @@ void scaleDataArray(byte ad_ch, int trig_point)
     if (ch_mode == MODE_INV)
       b = 4095 - b;
     *qdata++ = (int16_t) b;
+  }
+  if (rate == 0) {
+    mag(data[sample+ch], 10); // x10 magnification for OLED
+  } else if (rate == 1) {
+    mag(data[sample+ch], 5);  // x5 magnification for OLED
+  } else if (rate == 2) {
+    mag(data[sample+ch], 2);  // x2 magnification for OLED
+  }
+  if (rate == 0) {
+    mag(rdata, 10);           // x10 magnification for WEB
+  } else if (rate == 1) {
+    mag(rdata, 5);            // x5 magnification for WEB
+  } else if (rate == 2) {
+    mag(rdata, 2);            // x2 magnification for WEB
   }
 }
 
@@ -1167,9 +1188,6 @@ void sample_200us(unsigned int r) { // adc1_get_raw() with timing, channel 0 or 
   delay(1);
 }
 
-double vReal[FFT_N]; // Real part array, actually float type
-double vImag[FFT_N]; // Imaginary part array
-
 void plotFFT() {
   int ylim = 56;
 
@@ -1177,10 +1195,10 @@ void plotFFT() {
     vReal[i] = cap_buf[i];
     vImag[i] = 0.0;
   }
-  FFT.DCRemoval(vReal, FFT_N);
-  FFT.Windowing(vReal, FFT_N, FFT_WIN_TYP_HANN, FFT_FORWARD); // Weigh data
-  FFT.Compute(vReal, vImag, FFT_N, FFT_FORWARD);          // Compute FFT
-  FFT.ComplexToMagnitude(vReal, vImag, FFT_N);            // Compute magnitudes
+  FFT.dcRemoval();
+  FFT.windowing(FFTWindow::Hann, FFTDirection::Forward);  // Weigh data
+  FFT.compute(FFTDirection::Forward);                     // Compute FFT
+  FFT.complexToMagnitude();                               // Compute magnitudes
   payload[0] = 0;
   for (int i = 1; i < FFT_N/2; i++) {
     float db = log10(vReal[i]);
@@ -1196,7 +1214,7 @@ void draw_scale() {
   float fhref, nyquist;
   display.setTextColor(TXTCOLOR);
   display.setCursor(0, ylim); display.print("0Hz"); 
-  fhref = (float)HREF[rate];
+  fhref = freqhref();
   nyquist = 5.0e6 / fhref; // Nyquist frequency
   long inyquist = nyquist;
   payload[FFT_N/2] = (short) (inyquist / 1000);
@@ -1218,6 +1236,10 @@ void draw_scale() {
     display.setCursor(58, ylim); display.print(nyquist/2,0);
     display.setCursor(110, ylim); display.print(nyquist,0);
   }
+}
+
+float freqhref() {
+  return (float) HREF[rate];
 }
 
 void saveEEPROM() {                   // Save the setting value in EEPROM after waiting a while after the button operation.

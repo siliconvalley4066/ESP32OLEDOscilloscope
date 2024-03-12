@@ -46,12 +46,12 @@ void sample_i2s() {
 }
 
 static const uint32_t sample_rate[6] = {
-  500000, // 2us sampling (500ksps)
+  250000, // 4us sampling (250ksps) x10
+  250000, // 4us sampling (250ksps) x5
+  250000, // 4us sampling (250ksps) x2
   250000, // 4us sampling (250ksps)
   100000, // 10us sampling (100ksps)
-  75000,  // 13.3us sampling (75ksps)
-  50000,  // 20us sampling (50ksps)
-  25000}; // 40us sampling (25ksps)
+  50000}; // 20us sampling (50ksps)
 
 void i2sInit() {
   i2s_config_t i2s_config = {
