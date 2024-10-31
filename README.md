@@ -51,4 +51,4 @@ Schematics:<br>
 <img src="ESP32GOscillo2.png">
 
 Description is here, although it is written in Japanese language:<br>
-http://harahore.g2.xrea.com/ESP32/ESP32WebOscillo.html
+https://ss1.xrea.com/harahore.g2.xrea.com/ESP32/ESP32WebOscillo.html
