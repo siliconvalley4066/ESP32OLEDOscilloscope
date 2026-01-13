@@ -1,5 +1,6 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.32
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.33
+ * for esp32 by Espressif Systems version 3.3.5
  * The max software loop sampling rates are 10ksps with 2 channels and 20ksps with a channel.
  * In the I2S DMA mode, it can be set up to 250ksps.
  * + Pulse Generator
@@ -243,7 +244,7 @@ void CheckSW() {
   }
   if (sw != lastsw)
     vtime = ms;
-  saveTimer = 5000;     // set EEPROM save timer to 5 secnd
+  saveTimer = 5000;     // set EEPROM save timer to 5 second
   if (sw == 12) {
     full_screen = !full_screen;
     display.fillRect(DISPLNG + 1,0,27,64, BGCOLOR); // clear text area that will be drawn below 

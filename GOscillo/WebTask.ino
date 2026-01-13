@@ -43,7 +43,7 @@ void handleRoot(void) {
     handle_dds_freq();
     handle_pwm_duty();
     handle_pwm_freq();
-    saveTimer = 5000;     // set EEPROM save timer to 5 secnd
+    saveTimer = 5000;     // set EEPROM save timer to 5 second
     return;
   }
   index_html(NULL);
