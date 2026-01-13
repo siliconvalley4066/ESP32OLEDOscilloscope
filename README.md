@@ -4,10 +4,6 @@ ESP32 Oscilloscope for OLED and wireless WEB display
 <img src="DSC00021.jpg">
 <img src="ESP32WEBOLED.png">
 
-Warning!!!
-Use old esp32 by Espressif Systems version 2.0.17. 
-New version 3.0 and later does NOT support backward compatibility.
-
 This displays an oscilloscope screen both on a 128x64 OLED and also on the WEB page simultaneusly.
 The settings are controled by four tactile switches and also on the WEB page.
 You can view the oscilloscope screen on the WEB browser of the PC or the tablet or the smartphone.
@@ -26,7 +22,7 @@ Specifications:
 <p>
 Develop environment is:<br>
 Arduino IDE 1.8.19<br>
-esp32 by Espressif Systems version 2.0.11<br>
+esp32 by Espressif Systems version 3.5.5<br>
 CPU speed 240 MHz<br>
 </p>
 
@@ -34,7 +30,7 @@ Libraries:<br>
 Adafruit_SSD1306<br>
 Adafruit_SH110X<br>
 arduinoFFT by Enrique Condes 2.0.0<br>
-arduinoWebSockets from https://github.com/Links2004/arduinoWebSockets<br>
+WebSockets by Markus Sattler version 2.7.2<br>
 
 4usec/div range is 10 times magnification at 250ksps.<br>
 8usec/div range is 5 times magnification at 250ksps.<br>
