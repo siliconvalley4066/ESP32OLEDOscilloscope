@@ -11,8 +11,14 @@
  * Academy of Media Arts Cologne
  */
 
+#ifdef ESP32_C3
+#include <driver/sigmadelta.h>
+#define DDSPin 10
+#else
 #include <driver/dac.h>
 #include "soc/sens_reg.h"
+#define DDSPin 25
+#endif
 #include "soc/rtc.h"
 
 extern const unsigned char sine256[], saw256[], revsaw256[], triangle[], rect256[];
@@ -30,7 +36,6 @@ const char Wavename[][5] PROGMEM = {"Sine", "Saw", "RSaw", "Tri", "Rect",
 const byte wave_num = (sizeof(wavetable) / sizeof(&sine256));
 long ifreq = 12255; // frequency * 100 for 0.01Hz resolution
 byte wave_id = 0;
-#define DDSPin 25
 
 // const double refclk=5000.0;  // 5kHz
 const double refclk=5000.0;     // measured
@@ -38,21 +43,61 @@ const double refclk=5000.0;     // measured
 volatile byte icnt;              // var inside interrupt
 volatile unsigned long phaccu;   // pahse accumulator
 volatile unsigned long tword_m;  // dds tuning word m
+#ifdef ESP32_C3
+volatile int8_t wavebuf[256];
+#else
 volatile unsigned char wavebuf[256];
+#endif
 hw_timer_t * timer = NULL;
 void IRAM_ATTR onTimer();
 
+#ifdef ESP32_C3
+void dds_setup_init() {
+  sigmadelta_dds_setup();
+}
+
+void sigmadelta_dds_setup() {
+  pinMode(DDSPin, OUTPUT);
+  sigmadelta_config_t cfg = {
+    .channel = SIGMADELTA_CHANNEL_0,
+    .sigmadelta_duty = 0,
+    .sigmadelta_prescale = 8
+  };
+  sigmadelta_config(&cfg);
+
+  pinMode(ADC_CHANNEL_0, ANALOG); // cancel default output to GPIO0
+  sigmadelta_set_pin(SIGMADELTA_CHANNEL_0, GPIO_NUM_10);
+  if (timer == NULL) {
+    Setup_timer();
+    tword_m=pow(2,32)*ifreq*0.01/refclk; // calulate DDS new tuning word
+    wp = (unsigned char *) wavetable[wave_id];
+    copy_table(wp);
+  }
+//  timerAttachInterrupt(timer, &onTimer);
+  timerStart(timer);
+}
+
+void copy_table(const unsigned char * wp) {
+  for (int i = 0; i < 256; ++i)
+    wavebuf[i] = (int) *wp++ - 128;
+}
+
+void dds_close() {
+  if (!dds_mode) return;
+  Close_timer();
+  sigmadelta_set_duty(SIGMADELTA_CHANNEL_0, 0);
+  sigmadelta_set_pin(SIGMADELTA_CHANNEL_0, GPIO_NUM_NC);
+  sigmadelta_set_prescale(SIGMADELTA_CHANNEL_0, 0);
+  pinMode(DDSPin, INPUT);
+}
+
+#else
 void dds_setup_init() {
   dac_output_enable(DAC_CHANNEL_1);
   if (dac_cw_mode)
     cw_dds_setup();
   else
     pwm_dds_setup();
-}
-
-void dds_setup() {
-  if (dds_mode) return;
-  dds_setup_init();
 }
 
 void pwm_dds_setup() {
@@ -66,6 +111,20 @@ void pwm_dds_setup() {
   timerStart(timer);
 }
 
+void cw_dds_setup() {
+  dac_cw_generator_enable();
+  dac_cw_config_t cw = {
+    .en_ch = DAC_CHANNEL_1,
+    .scale = DAC_CW_SCALE_1,  // DAC_CW_SCALE_2:1/2 DAC_CW_SCALE_4:1/4 DAC_CW_SCALE_8:1/8
+    .phase = DAC_CW_PHASE_0,  // DAC_CW_PHASE_0:0degree DAC_CW_PHASE_180:+180degree
+    .freq = (uint32_t) 130,   // 130(130Hz) ~ 65537(65.537kHz why uint32?)
+    .offset = (int8_t) 0      // 0 yields Bug
+  };
+  dac_cw_generator_config(&cw);
+  SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_DC1, 0, SENS_DAC_DC1_S);  // fix offset bug
+  SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL1_REG, SENS_SW_FSTEP, ifreq, SENS_SW_FSTEP_S);
+}
+
 void dds_close() {
   if (!dds_mode) return;
   if (dac_cw_mode) {
@@ -74,6 +133,12 @@ void dds_close() {
     Close_timer();
   }
   dac_output_disable(DAC_CHANNEL_1);
+}
+#endif
+
+void dds_setup() {
+  if (dds_mode) return;
+  dds_setup_init();
 }
 
 void dds_set_freq() {
@@ -90,13 +155,21 @@ void rotate_wave(bool fwd) {
     else wave_id = wave_num - 1;
   }
   wp = (unsigned char *) wavetable[wave_id];
+#ifdef ESP32_C3
+  copy_table(wp);
+#else
   memcpy((void*)wavebuf, wp, 256);
+#endif
 }
 
 void set_wave(int id) {
   wave_id = id;
   wp = (unsigned char *) wavetable[wave_id];
+#ifdef ESP32_C3
+  copy_table(wp);
+#else
   memcpy((void*)wavebuf, wp, 256);
+#endif
 }
 
 //******************************************************************
@@ -107,9 +180,13 @@ void set_wave(int id) {
 void IRAM_ATTR onTimer() {
   phaccu=phaccu+tword_m; // soft DDS, phase accu with 32 bits
   icnt=phaccu >> 24;     // use upper 8 bits for phase accu as frequency information
+#ifdef ESP32_C3
+                         // read value fron ROM sine table and send to Sigma-Delta DAC
+  sigmadelta_set_duty(SIGMADELTA_CHANNEL_0, wavebuf[icnt]);
+#else
                          // read value fron ROM sine table and send to PWM DAC
   dac_output_voltage(DAC_CHANNEL_1, wavebuf[icnt]);
-//  dac_output_voltage(DAC_CHANNEL_1, wp[icnt]);
+#endif
 }
 
 //******************************************************************
@@ -145,6 +222,7 @@ void update_ifrq(long diff) {
   } else {
     newFreq = ifreq;
   }
+#ifndef ESP32_C3
   if (dac_cw_mode && newFreq < 1) {             // switch to PWM mode
     dac_cw_generator_disable();
     dac_cw_mode = false;
@@ -156,16 +234,38 @@ void update_ifrq(long diff) {
     newFreq = 4;      // 518.81Hz
     cw_dds_setup();
   }
+#endif
   newFreq = constrain(newFreq, 1, 99999);
   if (newFreq != ifreq) {
     ifreq = newFreq;
+#ifdef ESP32_C3
+    dds_set_freq();
+#else
     if (dac_cw_mode)
       SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL1_REG, SENS_SW_FSTEP, ifreq, SENS_SW_FSTEP_S);
     else
       dds_set_freq();
+#endif
   }
 }
 
+#ifndef NOWEB
+#ifdef ESP32_C3
+float set_freq(float dfreq) {
+  long newfreq = 100.0 * dfreq;
+  ifreq = round(newfreq);
+  // pwm_dds_setup();
+  ifreq = constrain(newfreq, 1, 99999);
+  dds_set_freq();
+  dfreq = 0.01 * ifreq;
+  return dfreq;
+}
+
+float dds_freq(void) {
+  return (float)ifreq * 0.01;
+}
+
+#else
 float set_freq(float dfreq) {
   long newfreq = 100.0 * dfreq;
   if (dac_cw_mode && newfreq < 12970) {         // switch to PWM mode
@@ -201,6 +301,8 @@ float dds_freq(void) {
   }
   return frequency;
 }
+#endif
+#endif
 
 void disp_dds_freq(void) {
   display.setTextColor(TXTCOLOR, BGCOLOR);
@@ -217,18 +319,4 @@ void disp_dds_freq(void) {
 
 void disp_dds_wave(void) {
   display.print(Wavename[wave_id]); 
-}
-
-void cw_dds_setup() {
-  dac_cw_generator_enable();
-  dac_cw_config_t cw = {
-    .en_ch = DAC_CHANNEL_1,
-    .scale = DAC_CW_SCALE_1,  // DAC_CW_SCALE_2:1/2 DAC_CW_SCALE_4:1/4 DAC_CW_SCALE_8:1/8
-    .phase = DAC_CW_PHASE_0,  // DAC_CW_PHASE_0:0degree DAC_CW_PHASE_180:+180degree
-    .freq = (uint32_t) 130,   // 130(130Hz) ~ 65537(65.537kHz why uint32?)
-    .offset = (int8_t) 0      // 0 yields Bug
-  };
-  dac_cw_generator_config(&cw);
-  SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_DC1, 0, SENS_DAC_DC1_S);  // fix offset bug
-  SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL1_REG, SENS_SW_FSTEP, ifreq, SENS_SW_FSTEP_S);
 }

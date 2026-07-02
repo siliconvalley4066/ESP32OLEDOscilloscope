@@ -1,3 +1,4 @@
+#ifndef ESP32_C3
 // Sample from the ADC continuously at a particular sample rate
 // Copyright (c) 2022, Siliconvalley4066
 
@@ -116,3 +117,4 @@ int trigger_point() {
   }
   return i;
 }
+#endif

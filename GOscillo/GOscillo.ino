@@ -1,11 +1,11 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.33
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.34
  * for esp32 by Espressif Systems version 3.3.5
  * The max software loop sampling rates are 10ksps with 2 channels and 20ksps with a channel.
  * In the I2S DMA mode, it can be set up to 250ksps.
  * + Pulse Generator
  * + PWM DDS Function Generator (23 waveforms)
- * Copyright (c) 2023, Siliconvalley4066
+ * Copyright (c) 2023,2026, Siliconvalley4066
  */
 /*
  * Arduino Oscilloscope using a graphic LCD
@@ -16,6 +16,10 @@
 #include "driver/adc.h"
 //#include "esp_task_wdt.h"
 
+#if defined(ARDUINO_NOLOGO_ESP32C3_SUPER_MINI) || defined(ARDUINO_ESP32C3_DEV) || defined(ARDUINO_WAVESHARE_ESP32_C3_ZERO)
+#define ESP32_C3
+#endif
+//#define NOWEB
 //#define BUTTON5DIR
 #define DISPLAY_IS_SSD1306
 #define SCREEN_WIDTH   128              // OLED display width
@@ -65,8 +69,13 @@ const int SAMPLES = 128;
 const int NSAMP = 512;
 const int DISPLNG = 100;
 const int DOTS_DIV = 10;
-const int ad_ch0 = ADC1_CHANNEL_6;  // Analog 34 pin for channel 0 ADC1_CHANNEL_6
-const int ad_ch1 = ADC1_CHANNEL_7;  // Analog 35 pin for channel 1 ADC1_CHANNEL_7
+#ifdef ESP32_C3
+const int ad_ch0 = ADC1_CHANNEL_1;  // Analog pin for channel 0
+const int ad_ch1 = ADC1_CHANNEL_3;  // Analog pin for channel 1
+#else
+const int ad_ch0 = ADC1_CHANNEL_6;  // Analog 34 pin for channel 0
+const int ad_ch1 = ADC1_CHANNEL_7;  // Analog 35 pin for channel 1
+#endif
 const long VREF[] = {32, 64, 161, 322, 645}; // reference voltage 3.3V ->  32 :   1V/div range (100mV/dot)
                                         //                        ->  64 : 0.5V/div
                                         //                        -> 161 : 0.2V/div
@@ -110,7 +119,9 @@ byte menu = 0;      // Default menu
 short ch0_off = 0, ch1_off = 400;
 byte data[2][SAMPLES];                  // keep the number of channels buffer
 uint16_t cap_buf[NSAMP], cap_buf1[NSAMP];
+#ifndef NOWEB
 uint16_t payload[SAMPLES*2+2];
+#endif
 byte odat00, odat01, odat10, odat11;    // old data buffer for erase
 byte sample=0;                          // index for double buffer
 bool fft_mode = false, pulse_mode = false, dds_mode = false, fcount_mode = false;
@@ -120,7 +131,16 @@ bool dac_cw_mode = false;
 int trigger_ad;
 volatile bool wfft, wdds;
 
-//#define LED_BUILTIN 2
+#ifdef ESP32_C3
+#define LEFTPIN   6   // LEFT
+#define RIGHTPIN  7   // RIGHT
+#define UPPIN     20  // UP
+#define DOWNPIN   2   // DOWN
+#define CH0DCSW   21  // DC/AC switch ch0
+#define CH1DCSW   4   // DC/AC switch ch1
+//#define I2CSDA    8   // I2C SDA
+//#define I2CSCL    9   // I2C SCL
+#else
 #define LEFTPIN   12  // LEFT
 #define RIGHTPIN  13  // RIGHT
 #define UPPIN     14  // UP
@@ -129,6 +149,7 @@ volatile bool wfft, wdds;
 #define CH1DCSW   32  // DC/AC switch ch1
 //#define I2CSDA    21  // I2C SDA
 //#define I2CSCL    22  // I2C SCL
+#endif
 // DAC_CHANNEL_1  is GPIO25
 // DAC_CHANNEL_2  is GPIO26
 // ADC1_CHANNEL_0 is GPIO36
@@ -150,21 +171,26 @@ volatile bool wfft, wdds;
 TaskHandle_t taskHandle;
 
 void setup(){
-  xTaskCreatePinnedToCore(setup1, "WebProcess", 4096, NULL, 1, &taskHandle, PRO_CPU_NUM); //Core 0でタスク開始
+#ifndef NOWEB
+  xTaskCreatePinnedToCore(setup1, "WebProcess", 4096, NULL, 4, &taskHandle, PRO_CPU_NUM); //Core 0でタスク開始
+#endif
   pinMode(CH0DCSW, INPUT_PULLUP);   // CH1 DC/AC
   pinMode(CH1DCSW, INPUT_PULLUP);   // CH2 DC/AC
   pinMode(UPPIN, INPUT_PULLUP);     // up
   pinMode(DOWNPIN, INPUT_PULLUP);   // down
   pinMode(RIGHTPIN, INPUT_PULLUP);  // right
   pinMode(LEFTPIN, INPUT_PULLUP);   // left
-  pinMode(34, ANALOG);              // Analog 34 pin for channel 0 ADC1_CHANNEL_6
-  pinMode(35, ANALOG);              // Analog 35 pin for channel 1 ADC1_CHANNEL_7
+  pinMode(34, ANALOG);              // Analog pin for channel 0
+  pinMode(35, ANALOG);              // Analog pin for channel 1
+#ifndef ESP32_C3
   pinMode(LED_BUILTIN, OUTPUT);     // sets the digital pin as output
+#endif
 #ifdef DISPLAY_IS_SSD1306
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // select 3C or 3D (set your OLED I2C address)
 #else
   display.begin(0x3c, true);                  // initialise the library
 #endif
+  Wire.setClock(400000);
 
 //  Serial.begin(115200);
 //  Serial.printf("CORE1 = %d\n", xPortGetCoreID());
@@ -178,15 +204,22 @@ void setup(){
 //  DrawGrid();
 //  DrawText();
 //  display.display();
+#ifdef ESP32_C3
+  adc1_config_channel_atten(ADC1_CHANNEL_1, ADC_ATTEN_DB_12);
+  adc1_config_channel_atten(ADC1_CHANNEL_3, ADC_ATTEN_DB_12);
+#else
   adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);
   adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);
+#endif
   adc1_config_width(ADC_WIDTH_BIT_12);
   if (pulse_mode)
     pulse_init();                       // calibration pulse output
   if (dds_mode)
     dds_setup_init();
   orate = RATE_DMA + 1;                 // old rate befor change
+#ifndef ESP32_C3
   rate_i2s_mode_config();
+#endif
 }
 
 byte lastsw = 255;
@@ -296,13 +329,17 @@ void updown_rate(byte sw) {
     orate = rate;
     if (rate > 0) {
       rate --;
+#ifndef ESP32_C3
       rate_i2s_mode_config();
+#endif
     }
   } else if (sw == 7) { // RATE SLOW
     orate = rate;
     if (rate < RATE_MAX) {
       rate ++;
+#ifndef ESP32_C3
       rate_i2s_mode_config();
+#endif
     } else {
       rate = RATE_MAX;
     }
@@ -844,8 +881,13 @@ void ClearAndDrawDot(int i) {
   DrawGrid(i);
 }
 
+#ifdef ESP32_C3
+#define BENDX 3150  // 85% of 4096
+#define BENDY 3072  // 75% of 4096
+#else
 #define BENDX 3480  // 85% of 4096
 #define BENDY 3072  // 75% of 4096
+#endif
 
 int16_t adc_linearlize(int16_t level) {
   if (level < BENDY) {
@@ -870,7 +912,9 @@ void scaleDataArray(byte ad_ch, int trig_point)
     range = range1;
     pdata = data[1];
     idata = &cap_buf1[trig_point];
+#ifndef NOWEB
     qdata = rdata = payload+SAMPLES;
+#endif
     ch = 1;
   } else {
     ch_off = ch0_off;
@@ -878,7 +922,9 @@ void scaleDataArray(byte ad_ch, int trig_point)
     range = range0;
     pdata = data[0];
     idata = &cap_buf[trig_point];
+#ifndef NOWEB
     qdata = rdata = payload;
+#endif
     ch = 0;
   }
   for (int i = 0; i < SAMPLES; i++) {
@@ -894,7 +940,9 @@ void scaleDataArray(byte ad_ch, int trig_point)
     else if (b < 0) b = 0;
     if (ch_mode == MODE_INV)
       b = 4095 - b;
+#ifndef NOWEB
     *qdata++ = (int16_t) b;
+#endif
   }
   if (rate == 0) {
     mag(data[sample+ch], 10); // x10 magnification for OLED
@@ -928,10 +976,14 @@ byte adRead(byte ch, byte mode, int off, int i)
     b = 4095 - b;
   if (ch == ad_ch1) {
     cap_buf1[i] = aa;
+#ifndef NOWEB
     payload[i+SAMPLES] = b;
+#endif
   } else {
     cap_buf[i] = aa;
+#ifndef NOWEB
     payload[i] = b;
+#endif
   }
   return a;
 }
@@ -955,7 +1007,9 @@ void loop() {
   unsigned long auto_time;
 
   timeExec = 100;
+#ifndef ESP32_C3
   digitalWrite(LED_BUILTIN, LED_ON);
+#endif
   if (rate > RATE_DMA) {
     set_trigger_ad();
     auto_time = pow(10, rate / 3) + 5;
@@ -988,7 +1042,11 @@ void loop() {
   if (rate < RATE_ROLL && Start) {
 
     if (rate <= RATE_DMA) { // channel 0 or 1 I2S DMA sampling (Max 500ksps)
+#ifndef ESP32_C3
       sample_i2s();
+#else
+      sample_200us(20);
+#endif
     } else if (rate == 6) { // channel 0 or 1 50us sampling
       sample_200us(50);
     } else if (rate >= 7 && rate <= 8) {  // dual channel 100us, 200us sampling
@@ -996,7 +1054,9 @@ void loop() {
     } else {                // dual channel .5ms, 1ms, 2ms, 5ms, 10ms, 20ms sampling
       sample_dual_ms(HREF[rate] / 10);
     }
+#ifndef ESP32_C3
     digitalWrite(LED_BUILTIN, LED_OFF);
+#endif
     draw_screen();
   } else if (Start) { // 50ms - 1000ms sampling
     timeExec = 5000;
@@ -1031,14 +1091,18 @@ void loop() {
       odat11 = data[1][i];  // save previous data ch1
       if (ch0_mode != MODE_OFF) data[0][i] = adRead(ad_ch0, ch0_mode, ch0_off, i);
       if (ch1_mode != MODE_OFF) data[1][i] = adRead(ad_ch1, ch1_mode, ch1_off, i);
+#ifndef NOWEB
       if (ch0_mode == MODE_OFF) payload[0] = -1;
       if (ch1_mode == MODE_OFF) payload[SAMPLES] = -1;
       xTaskNotify(taskHandle, 0, eNoAction);  // notify Websocket server task
+#endif
       ClearAndDrawDot(i);     
       display.display();  // 42ms
     }
     // Serial.println(millis()-st0);
+#ifndef ESP32_C3
     digitalWrite(LED_BUILTIN, LED_OFF);
+#endif
     DrawGrid();
     if (!full_screen) DrawText();
   } else {
@@ -1070,11 +1134,15 @@ void draw_screen() {
     DrawGrid();
     ClearAndDrawGraph();
     if (!full_screen) DrawText();
+#ifndef NOWEB
     if (ch0_mode == MODE_OFF) payload[0] = -1;
     if (ch1_mode == MODE_OFF) payload[SAMPLES] = -1;
+#endif
   }
+#ifndef NOWEB
   xTaskNotify(taskHandle, 0, eNoAction);  // notify Websocket server task
-  delay(10);    // wait Web task to send it (adhoc fix)
+  vTaskDelay(10);    // wait Web task to send it (adhoc fix)
+#endif
   display.display();
 }
 
@@ -1184,9 +1252,9 @@ void sample_200us(unsigned int r) { // adc1_get_raw() with timing, channel 0 or 
 //    esp_task_wdt_reset();
   }
 //  enableCore1WDT();
-  delay(1);
+  vTaskDelay(1);
   scaleDataArray(ad_ch, 0);
-  delay(1);
+  vTaskDelay(1);
 }
 
 void plotFFT() {
@@ -1200,10 +1268,14 @@ void plotFFT() {
   FFT.windowing(FFTWindow::Hann, FFTDirection::Forward);  // Weigh data
   FFT.compute(FFTDirection::Forward);                     // Compute FFT
   FFT.complexToMagnitude();                               // Compute magnitudes
+#ifndef NOWEB
   payload[0] = 0;
+#endif
   for (int i = 1; i < FFT_N/2; i++) {
     float db = log10(vReal[i]);
+#ifndef NOWEB
     payload[i] = constrain((int)(1024.0 * (db - 1.6)), 0, 4095);
+#endif
     int dat = constrain((int)(15.0 * db - 20), 0, ylim);
     display.drawFastVLine(i * 2, ylim - dat, dat, TXTCOLOR);
   }
@@ -1218,8 +1290,10 @@ void draw_scale() {
   fhref = freqhref();
   nyquist = 5.0e6 / fhref; // Nyquist frequency
   long inyquist = nyquist;
+#ifndef NOWEB
   payload[FFT_N/2] = (short) (inyquist / 1000);
   payload[FFT_N/2+1] = (short) (inyquist % 1000);
+#endif
   if (nyquist > 999.0) {
     nyquist = nyquist / 1000.0;
     if (nyquist > 99.5) {
