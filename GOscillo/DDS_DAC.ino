@@ -61,12 +61,11 @@ void sigmadelta_dds_setup() {
   sigmadelta_config_t cfg = {
     .channel = SIGMADELTA_CHANNEL_0,
     .sigmadelta_duty = 0,
-    .sigmadelta_prescale = 8
+    .sigmadelta_prescale = 8,
+    .sigmadelta_gpio = GPIO_NUM_10
   };
   sigmadelta_config(&cfg);
 
-  pinMode(ADC_CHANNEL_0, ANALOG); // cancel default output to GPIO0
-  sigmadelta_set_pin(SIGMADELTA_CHANNEL_0, GPIO_NUM_10);
   if (timer == NULL) {
     Setup_timer();
     tword_m=pow(2,32)*ifreq*0.01/refclk; // calulate DDS new tuning word
@@ -308,10 +307,10 @@ void disp_dds_freq(void) {
   display.setTextColor(TXTCOLOR, BGCOLOR);
   if (dac_cw_mode) {
     float frequency = RTC_FAST_CLK_FREQ_APPROX * (float) ifreq / 65536.0;
-    display.setCursor(DISPTXT-7*6, 56);
+    display.setCursor(DISPTXT-7*6, txtLINE7);
     display.print(frequency, 2);
   } else {
-    display.setCursor(DISPTXT-4*6, 56);
+    display.setCursor(DISPTXT-4*6, txtLINE7);
     display.print((float)ifreq * 0.01, 2);
   }
   display.print("Hz");

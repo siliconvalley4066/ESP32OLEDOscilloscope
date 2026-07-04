@@ -642,7 +642,7 @@ async function post_duty() {
 }
 </script>
 <body>
-<h3>ESP32 Web Oscilloscope ver. 1.34</h3>
+<h3>ESP32 Web Oscilloscope ver. 1.35</h3>
 <div style='float: left; margin-right: 10px'>
 <canvas id='cvs1' width='641' height='401' class='float'></canvas></div>
 <form id='rate0'>Rate: <label id="rate_area">%RATE% %REALDMA%</label>

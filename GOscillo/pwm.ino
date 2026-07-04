@@ -75,9 +75,7 @@ void update_frq(int diff) {
 }
 
 void disp_pulse_frq(void) {
-  double freq = pulse_frq();
-  display.setTextColor(TXTCOLOR, BGCOLOR);
-  display.setCursor(72, 56);
+  float freq = pulse_frq();
   if (freq < 10.0) {
     display.print(freq, 5);
   } else if (freq < 100.0) {
@@ -89,18 +87,27 @@ void disp_pulse_frq(void) {
   } else if (freq < 100000.0) {
     display.print(freq, 1);
   } else if (freq < 1000000.0) {
-    display.setCursor(78, 56);
-    display.print(freq, 0);
+    display.print(freq * 1e-3, 2); display.print('k');
   } else if (freq < 10000000.0) {
-    display.print(freq, 0);
+    display.print(freq * 1e-6, 4); display.print('M');
   } else {
-    display.setCursor(66, 56);
-    display.print(freq, 0);
+    display.print(freq * 1e-6, 3); display.print('M');
   }
   display.print("Hz");
-  display.setCursor(72, 48);
-//  display.print(duty*100.0/256.0, 1); display.print('%');
-  display.print(duty*0.390625, 1); display.print('%');
+}
+
+void disp_pulse_dty(void) {
+  static bool sp = true;
+  float fduty = duty*100.0/256.0;
+  display.print(fduty, 1); display.print('%');
+  if (fduty < 9.95) {
+    if (sp) {
+      display.print(' ');
+      sp = false;
+    }
+  } else {
+    sp = true;
+  }
 }
 
 void pulse_start() {

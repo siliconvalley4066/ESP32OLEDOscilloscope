@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.34
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.35
  * for esp32 by Espressif Systems version 3.3.5
  * The max software loop sampling rates are 10ksps with 2 channels and 20ksps with a channel.
  * In the I2S DMA mode, it can be set up to 250ksps.
@@ -22,6 +22,7 @@
 //#define NOWEB
 //#define BUTTON5DIR
 #define DISPLAY_IS_SSD1306
+//#define DISPLAY_IS_SH1107V
 #define SCREEN_WIDTH   128              // OLED display width
 #define SCREEN_HEIGHT   64              // OLED display height
 #define OLED_RESET     -1     // Reset pin # (or -1 if sharing Arduino reset pin)
@@ -30,7 +31,11 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #else
 #include <Adafruit_SH110X.h>
+#ifdef DISPLAY_IS_SH1107V
+Adafruit_SH1107 display = Adafruit_SH1107(SCREEN_HEIGHT, SCREEN_WIDTH, &Wire, OLED_RESET);
+#else
 Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+#endif
 #define WHITE 1
 #define BLACK 0
 #endif
@@ -47,6 +52,9 @@ ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, FFT_N, 1.0);  // Creat
 #define txtLINE2   16
 #define txtLINE3   24
 #define txtLINE4   32
+#define txtLINE5   40
+#define txtLINE6   48
+#define txtLINE7   56
 #define DISPTXT 103
 
 float waveFreq[2];             // frequency (Hz)
@@ -76,14 +84,17 @@ const int ad_ch1 = ADC1_CHANNEL_3;  // Analog pin for channel 1
 const int ad_ch0 = ADC1_CHANNEL_6;  // Analog 34 pin for channel 0
 const int ad_ch1 = ADC1_CHANNEL_7;  // Analog 35 pin for channel 1
 #endif
-const long VREF[] = {32, 64, 161, 322, 645}; // reference voltage 3.3V ->  32 :   1V/div range (100mV/dot)
-                                        //                        ->  64 : 0.5V/div
-                                        //                        -> 161 : 0.2V/div
-                                        //                        -> 322 : 100mV/div
-                                        //                        -> 644 :  50mV/div
+const long VREF[] = {33, 66, 165, 330, 660}; // reference voltage 3.3V ->  33 :   1V/div range (100mV/dot)
+                                        //                        ->  66 : 0.5V/div
+                                        //                        -> 165 : 0.2V/div
+                                        //                        -> 330 : 100mV/div
+                                        //                        -> 660 :  50mV/div
+                                        // 3.3V / attn * DOTS_DIV / vdiv
 //const int MILLIVOL_per_dot[] = {100, 50, 20, 10, 5}; // mV/dot
-//const int ac_offset[] PROGMEM = {1792, -128, -1297, -1679, -1860}; // for OLED
-const int ac_offset[] PROGMEM = {3072, 512, -1043, -1552, -1804}; // for Web
+//const int ac_offset[] PROGMEM = {1676, -186, -1303, -1676, -1862}; // 3 div offset
+//                              = 3 * vdiv / 3.3 * 4096 - 2048
+const int ac_offset[] PROGMEM = {2917, 434, -1055, -1552, -1800}; // 4 div offset
+//                            = 4 * vdiv / 3.3 * 4096 - 2048
 const int MODE_ON = 0;
 const int MODE_INV = 1;
 const int MODE_OFF = 2;
@@ -100,6 +111,7 @@ const int TRIG_E_DN = 1;
 #define RATE_NUM 20
 #define RATE_DMA 5
 #define RATE_DUAL 7
+#define RATE_SLOW 9
 #define RATE_ROLL 15
 #define RATE_MAG 2
 #define ITEM_MAX 29
@@ -130,8 +142,11 @@ byte info_mode = 3; // Text information display mode
 bool dac_cw_mode = false;
 int trigger_ad;
 volatile bool wfft, wdds;
+byte time_mag = 1;  // magnify timebase: 1, 2, 5 or 10
 
 #ifdef ESP32_C3
+#define ADC0PIN   1   // Analog pin for channel 0
+#define ADC1PIN   3   // Analog pin for channel 1
 #define LEFTPIN   6   // LEFT
 #define RIGHTPIN  7   // RIGHT
 #define UPPIN     20  // UP
@@ -141,6 +156,8 @@ volatile bool wfft, wdds;
 //#define I2CSDA    8   // I2C SDA
 //#define I2CSCL    9   // I2C SCL
 #else
+#define ADC0PIN   34  // Analog pin for channel 0
+#define ADC1PIN   35  // Analog pin for channel 1
 #define LEFTPIN   12  // LEFT
 #define RIGHTPIN  13  // RIGHT
 #define UPPIN     14  // UP
@@ -165,6 +182,7 @@ volatile bool wfft, wdds;
 #define CH1COLOR  WHITE
 #define CH2COLOR  WHITE
 #define TXTCOLOR  WHITE
+#define TRGCOLOR  WHITE
 #define LED_ON    HIGH
 #define LED_OFF   LOW
 
@@ -174,14 +192,14 @@ void setup(){
 #ifndef NOWEB
   xTaskCreatePinnedToCore(setup1, "WebProcess", 4096, NULL, 4, &taskHandle, PRO_CPU_NUM); //Core 0でタスク開始
 #endif
+  pinMode(ADC0PIN, ANALOG);         // Analog pin for channel 0
+  pinMode(ADC1PIN, ANALOG);         // Analog pin for channel 1
   pinMode(CH0DCSW, INPUT_PULLUP);   // CH1 DC/AC
   pinMode(CH1DCSW, INPUT_PULLUP);   // CH2 DC/AC
   pinMode(UPPIN, INPUT_PULLUP);     // up
   pinMode(DOWNPIN, INPUT_PULLUP);   // down
   pinMode(RIGHTPIN, INPUT_PULLUP);  // right
   pinMode(LEFTPIN, INPUT_PULLUP);   // left
-  pinMode(34, ANALOG);              // Analog pin for channel 0
-  pinMode(35, ANALOG);              // Analog pin for channel 1
 #ifndef ESP32_C3
   pinMode(LED_BUILTIN, OUTPUT);     // sets the digital pin as output
 #endif
@@ -222,436 +240,6 @@ void setup(){
 #endif
 }
 
-byte lastsw = 255;
-unsigned long vtime;
-
-void CheckSW() {
-  static unsigned long Millis = 0;
-  unsigned long ms;
-  byte sw;
-
-  ms = millis();
-  if ((ms - Millis)<200)
-    return;
-  Millis = ms;
-
-  if (wrate != 0) {
-    updown_rate(wrate);
-    wrate = 0;
-  }
-
-/* SW10 Menu
- * SW9  CH1 range down
- * SW8  CH2 range down
- * SW7  TIME/DIV slow
- * SW6  TRIG_MODE down
- * SW5  Send
- * SW4  TRIG_MODE up
- * SW3  TIME/DIV fast
- * SW2  CH2 range up
- * SW1  CH1 range up
- * SW0  Start/Hold
- */
-#ifdef BUTTON5DIR
-  if (digitalRead(DOWNPIN) == LOW && digitalRead(LEFTPIN) == LOW) {
-    sw = 11;    // both button press
-  } else if (digitalRead(UPPIN) == LOW && digitalRead(RIGHTPIN) == LOW) {
-    sw = 12;    // both button press
-#else
-  if (digitalRead(RIGHTPIN) == LOW && digitalRead(LEFTPIN) == LOW) {
-    sw = 11;    // both button press
-  } else if (digitalRead(UPPIN) == LOW && digitalRead(DOWNPIN) == LOW) {
-    sw = 12;    // both button press
-#endif
-  } else if (digitalRead(DOWNPIN) == LOW) {
-    sw = 10;    // down
-  } else if (digitalRead(RIGHTPIN) == LOW) {
-    sw = 3;     // right
-  } else if (digitalRead(LEFTPIN) == LOW) {
-    sw = 7;     // left
-  } else if (digitalRead(UPPIN) == LOW) {
-    sw = 0;     // up
-  } else {
-    lastsw = 255;
-    return;
-  }
-  if (sw != lastsw)
-    vtime = ms;
-  saveTimer = 5000;     // set EEPROM save timer to 5 second
-  if (sw == 12) {
-    full_screen = !full_screen;
-    display.fillRect(DISPLNG + 1,0,27,64, BGCOLOR); // clear text area that will be drawn below 
-  } else {
-    switch (menu) {
-    case 0:
-      menu0_sw(sw); 
-      break;
-    case 1:
-      menu1_sw(sw); 
-      break;
-    case 2:
-      menu2_sw(sw); 
-      break;
-    case 3:
-      menu3_sw(sw); 
-      break;
-    default:
-      break;
-    }
-    DrawText();
-    display.display();
-  }
-  lastsw = sw;
-}
-
-void updown_ch0range(byte sw) {
-  if (sw == 3) {        // CH0 RANGE +
-    if (range0 > 0)
-      range0 --;
-  } else if (sw == 7) { // CH0 RANGE -
-    if (range0 < RANGE_MAX)
-      range0 ++;
-  }
-}
-
-void updown_ch1range(byte sw) {
-  if (sw == 3) {        // CH1 RANGE +
-    if (range1 > 0)
-      range1 --;
-  } else if (sw == 7) { // CH1 RANGE -
-    if (range1 < RANGE_MAX)
-      range1 ++;
-  }
-}
-
-void updown_rate(byte sw) {
-  if (sw == 3) {        // RATE FAST
-    orate = rate;
-    if (rate > 0) {
-      rate --;
-#ifndef ESP32_C3
-      rate_i2s_mode_config();
-#endif
-    }
-  } else if (sw == 7) { // RATE SLOW
-    orate = rate;
-    if (rate < RATE_MAX) {
-      rate ++;
-#ifndef ESP32_C3
-      rate_i2s_mode_config();
-#endif
-    } else {
-      rate = RATE_MAX;
-    }
-  }
-}
-
-void menu0_sw(byte sw) {  
-  switch (item) {
-  case 0: // CH0 voltage range
-    updown_ch0range(sw);
-    break;
-  case 1: // CH1 voltage range
-    updown_ch1range(sw);
-    break;
-  case 2: // rate
-    updown_rate(sw);
-    break;
-  case 3: // sampling mode
-    break;
-  case 4: // trigger mode
-    if (sw == 3) {        // TRIG MODE +
-      if (trig_mode < TRIG_ONE)
-        trig_mode ++;
-      else
-        trig_mode = 0;
-    } else if (sw == 7) { // TRIG MODE -
-      if (trig_mode > 0)
-        trig_mode --;
-      else
-        trig_mode = TRIG_ONE;
-    }
-    if (trig_mode != TRIG_ONE)
-        Start = true;
-    break;
-  case 5: // trigger source and polarity
-    if (sw == 3) {        // trigger + edge
-      if (trig_edge == TRIG_E_UP)
-        trig_edge = TRIG_E_DN;
-      else
-        trig_edge = TRIG_E_UP;
-    } else if (sw == 7) { // trigger - channel
-      if (trig_ch == ad_ch0)
-        trig_ch = ad_ch1;
-      else
-        trig_ch = ad_ch0;
-      set_trigger_ad();
-    }
-    break;
-  case 6: // trigger level
-    if (sw == 3) {        // trigger level +
-      if (trig_lv < 80) {
-        trig_lv ++;
-        set_trigger_ad();
-      }
-    } else if (sw == 7) { // trigger level -
-      if (trig_lv > 0) {
-        trig_lv --;
-        set_trigger_ad();
-      }
-    }
-    break;
-  case 7: // run / hold
-    if (sw == 3 || sw == 7) {
-      Start = !Start;
-    }
-    break;
-  }
-  menu_updown(sw);
-}
-
-void menu1_sw(byte sw) {  
-  switch (item - 8) {
-  case 1: // CH0 mode
-    if (sw == 3) {        // CH0 + ON/INV
-      if (ch0_mode == MODE_ON)
-        ch0_mode = MODE_INV;
-      else
-        ch0_mode = MODE_ON;
-    } else if (sw == 7) { // CH0 - ON/OFF
-      if (ch0_mode == MODE_OFF)
-        ch0_mode = MODE_ON;
-      else
-        ch0_mode = MODE_OFF;
-    }
-    break;
-  case 2: // CH0 voltage range
-    updown_ch0range(sw);
-    break;
-  case 3: // CH0 offset
-    if (sw == 3) {        // offset +
-      if (ch0_off < 8191)
-        ch0_off += 4096/VREF[range0];
-    } else if (sw == 7) { // offset -
-      if (ch0_off > -8191)
-        ch0_off -= 4096/VREF[range0];
-    } else if (sw == 11) { // offset reset
-      if (digitalRead(CH0DCSW) == LOW)    // DC/AC input
-        ch0_off = ac_offset[range0];
-      else
-        ch0_off = 0;
-    }
-    break;
-  case 5: // CH1 mode
-    if (sw == 3) {        // CH1 + ON/INV
-      if (ch1_mode == MODE_ON)
-        ch1_mode = MODE_INV;
-      else
-        ch1_mode = MODE_ON;
-    } else if (sw == 7) { // CH1 - ON/OFF
-      if (ch1_mode == MODE_OFF)
-        ch1_mode = MODE_ON;
-      else
-        ch1_mode = MODE_OFF;
-    }
-    break;
-  case 6: // CH1 voltage range
-    updown_ch1range(sw);
-    break;
-  case 7: // CH1 offset
-    if (sw == 3) {        // offset +
-      if (ch1_off < 8191)
-        ch1_off += 4096/VREF[range1];
-    } else if (sw == 7) { // offset -
-      if (ch1_off > -8191)
-        ch1_off -= 4096/VREF[range1];
-    } else if (sw == 11) { // offset reset
-      if (digitalRead(CH1DCSW) == LOW)    // DC/AC input
-        ch1_off = ac_offset[range1];
-      else
-        ch1_off = 0;
-    }
-    break;
-  }
-  menu_updown(sw);
-}
-
-void menu2_sw(byte sw) {
-  int diff;
-  switch (item - 16) {
-  case 0: // CH0 voltage range
-    updown_ch0range(sw);
-    break;
-  case 1: // rate
-    updown_rate(sw);
-    break;
-  case 2: // FFT mode
-    if (sw == 3) {        // ON
-      wfft = true;
-    } else if (sw == 7) { // OFF
-      wfft = false;
-    }
-    break;
-  case 3: // Frequency and Duty display
-    if (sw == 3) {        // ON
-      info_mode |= 1;
-    } else if (sw == 7) { // OFF
-      info_mode &= ~1;
-    }
-    break;
-  case 4: // Voltage display
-    if (sw == 3) {        // ON
-      info_mode |= 2;
-    } else if (sw == 7) { // OFF
-      info_mode &= ~2;
-    }
-    break;
-  case 5: // PWM
-    if (sw == 3) {        // +
-      update_frq(0);
-      pulse_start();
-      pulse_mode = true;
-    } else if (sw == 7) { // -
-      pulse_close();
-      pulse_mode = false;
-    }
-    break;
-  case 6: // PWM Duty ratio
-    diff = 1;
-    if (sw == lastsw) {
-      if (millis() - vtime > 5000) diff = 8;
-    }
-    if (sw == 3) {        // +
-      if (pulse_mode) {
-        if ((256 - duty) > diff) duty += diff;
-      } else {
-        pulse_start();
-      }
-      update_frq(0);
-      pulse_mode = true;
-    } else if (sw == 7) { // -
-      if (pulse_mode) {
-        if (duty > diff) duty -= diff;
-      } else {
-        pulse_start();
-      }
-      update_frq(0);
-      pulse_mode = true;
-    }
-    break;
-  case 7: // PWM Frequency
-    diff = sw_accel(sw);
-    if (sw == 3) {        // +
-      if (pulse_mode)
-        update_frq(-diff);
-      else {
-        update_frq(0);
-        pulse_start();
-      }
-      pulse_mode = true;
-    } else if (sw == 7) { // -
-      if (pulse_mode)
-        update_frq(diff);
-      else {
-        update_frq(0);
-        pulse_start();
-      }
-      pulse_mode = true;
-    }
-    break;
-  }
-  menu_updown(sw);
-}
-
-void menu3_sw(byte sw) {
-  char diff;
-  switch (item - 24) {
-  case 0: // CH0 voltage range
-    updown_ch0range(sw);
-    break;
-  case 1: // rate
-    updown_rate(sw);
-    break;
-  case 2: // DDS
-    if (sw == 3) {        // +
-      dds_setup();
-      dds_mode = wdds = true;
-    } else if (sw == 7) { // -
-      dds_close();
-      dds_mode = wdds = false;
-    }
-    break;
-  case 3: // WAVE
-    if (sw == 3) {        // +
-      rotate_wave(true);
-    } else if (sw == 7) { // -
-      rotate_wave(false);
-    }
-    break;
-  case 4: // FREQ
-    diff = sw_accel(sw);
-    if (sw == 3) {        // +
-      update_ifrq(diff);
-    } else if (sw == 7) { // -
-      update_ifrq(-diff);
-    }
-    break;
-  case 5: // Measure channel
-    if (sw == 3) {        // CH2
-      info_mode |= 4;
-    } else if (sw == 7) { // CH1
-      info_mode &= ~4;
-    }
-    break;
-  case 6: // Frequency Counter
-    if (sw == 3 && rate <= RATE_MAX) {  // on
-//      dds_close(); dds_mode = false;
-//      pulse_close();
-      pulse_mode = false; fcount_mode = true;
-//      FreqCount.begin(1000);
-    } else if (sw == 7) {               // off
-      fcount_close();
-    }
-    break;
-  }
-  menu_updown(sw);
-}
-
-void menu_updown(byte sw) {
-  if (sw == 10) {       // MENU down SW
-    increment_item();
-  } else if (sw == 0) { // Menu up SW
-    decrement_item();
-  }
-}
-
-void increment_item() {
-  ++item;
-  if (item > ITEM_MAX) item = 0;
-  if (item == 3) item = 4;      // skip real/DMA
-  if (item < 16 || item > 18) wfft = false; // exit FFT mode
-  menu = item >> 3;
-}
-
-void decrement_item() {
-  if (item > 0) --item;
-  else item = ITEM_MAX;
-  if (item == 3) item = 2;      // skip real/DMA
-  if (item < 16 || item > 18) wfft = false; // exit FFT mode
-  menu = item >> 3;
-}
-
-byte sw_accel(byte sw) {
-  char diff = 1;
-  if (sw == lastsw) {
-    unsigned long curtime = millis();
-    if (curtime - vtime > 6000) diff = 4;
-    else if (curtime - vtime > 4000) diff = 3;
-    else if (curtime - vtime > 2000) diff = 2;
-  }
-  return (diff);
-}
-
 void DrawGrid() {
   int disp_leng;
   if (full_screen) disp_leng = SAMPLES;
@@ -668,117 +256,6 @@ void DrawGrid() {
       CheckSW();
     }
   }
-}
-
-void DrawText() {
-  display.fillRect(DISPLNG+1,0,27,64, BGCOLOR); // clear text area that will be drawn below 
-
-  switch (menu) {
-  case 0:
-    set_line_color(0);
-    if (ch0_mode != MODE_OFF) {
-      display_range(range0);
-    } else {
-      display.print("CH2"); display_ac(CH1DCSW);
-    }
-    set_line_color(1);
-    if (ch1_mode != MODE_OFF) {
-      display_range(range1);
-    } else {
-      display.print("CH1"); display_ac(CH0DCSW);
-    }
-    set_line_color(2);
-    display_rate();
-    set_line_color(3);
-    if (rate > RATE_DMA) display.print("real");
-    else if (rate > RATE_MAG) display.print("DMA");
-    else display.print("MAG");
-    set_line_color(4);
-    display_trig_mode();
-    set_line_color(5);
-    display.print(trig_ch == ad_ch0 ? "TG1" : "TG2"); 
-    display.print(trig_edge == TRIG_E_UP ? char(0x18) : char(0x19)); 
-    set_line_color(6);
-    display.print("Tlev"); 
-    set_line_color(7);
-    display.print(Start ? "RUN" : "HOLD"); 
-    break;
-  case 1:
-    set_line_color(0);
-    display.print("CH1"); display_ac(CH0DCSW);
-    set_line_color(1);
-    display_mode(ch0_mode);
-    set_line_color(2);
-    display_range(range0);
-    set_line_color(3);
-    display.print("OFS1"); 
-    set_line_color(4);
-    display.print("CH2"); display_ac(CH1DCSW);
-    set_line_color(5);
-    display_mode(ch1_mode);
-    set_line_color(6);
-    display_range(range1);
-    set_line_color(7);
-    display.print("OFS2");
-    break;
-  case 2:
-    set_line_color(0);
-    display_range(range0);
-    set_line_color(1);
-    display_rate();
-    set_line_color(2);
-    if (!fft_mode) {
-      display.print("FFT"); 
-      set_line_color(3);
-      display.print("FREQ"); 
-      set_line_color(4);
-      display.print("VOLT"); 
-      set_line_color(5);
-      display.print("PWM"); 
-      set_line_color(6);
-      display.print("DUTY"); 
-      set_line_color(7);
-      display.print("FREQ");
-      if (pulse_mode && (item > 20 && item < 24))
-        disp_pulse_frq();
-    }
-    break;
-  case 3:
-    set_line_color(0);
-    display_range(range0);
-    set_line_color(1);
-    display_rate();
-    set_line_color(2);
-    display.print("DDS");
-    set_line_color(3);
-    disp_dds_wave();
-    set_line_color(4);
-    display.print("FREQ");
-    if (dds_mode && (item > 25 && item < 29)) {
-      display.setTextColor(TXTCOLOR, BGCOLOR);
-      display.setCursor(72, 56);
-      disp_dds_freq();
-    }
-    set_line_color(5);
-    if (info_mode & 4)
-      display.print("MSR2");
-    else
-      display.print("MSR1");
-//    set_line_color(6);
-//    display.print("FCNT");
-//    fcount_disp();
-    break;
-  }
-  if (info_mode & 3) {
-    int ch = (info_mode & 4) ? 1 : 0;
-    dataAnalize(ch);
-    if (info_mode & 1)
-      measure_frequency(ch);
-    if (info_mode & 2)
-      measure_voltage(ch);
-  }
-  if (!full_screen && !fft_mode)
-    display.drawFastHLine(DISPLNG, LCD_YMAX - trig_lv, 3, GRIDCOLOR); // draw trig_lv tic
 }
 
 //unsigned long fcount = 0;
@@ -841,22 +318,25 @@ void ClearAndDrawGraph() {
   else disp_leng = DISPLNG-1;
   bool ch1_active = ch1_mode != MODE_OFF && !(rate < RATE_DUAL && ch0_mode != MODE_OFF);
 #if 0
-  for (int x=0; x<DISPLNG; x++) {
+  for (int x=0; x<disp_leng; x++) {
     display.drawPixel(x, LCD_YMAX-data[sample+0][x], CH1COLOR);
     display.drawPixel(x, LCD_YMAX-data[sample+1][x], CH2COLOR);
   }
 #else
   for (int x=0; x<disp_leng; x++) {
-    if (ch0_mode != MODE_OFF)
+    if (ch0_mode != MODE_OFF) {
       display.drawLine(x, LCD_YMAX-data[sample+0][x], x+1, LCD_YMAX-data[sample+0][x+1], CH1COLOR);
-    if (ch1_active)
+    }
+    if (ch1_active) {
       display.drawLine(x, LCD_YMAX-data[sample+1][x], x+1, LCD_YMAX-data[sample+1][x+1], CH2COLOR);
+    }
     CheckSW();
   }
 #endif
 }
 
 void ClearAndDrawDot(int i) {
+  DrawGrid(i);
 #if 0
   for (int x=0; x<DISPLNG; x++) {
     display.drawPixel(i, LCD_YMAX-odat01, BGCOLOR);
@@ -866,7 +346,6 @@ void ClearAndDrawDot(int i) {
   }
 #else
   if (i < 1) {
-    DrawGrid(i);
     return;
   }
   if (ch0_mode != MODE_OFF) {
@@ -878,7 +357,6 @@ void ClearAndDrawDot(int i) {
     display.drawLine(i-1, LCD_YMAX-data[1][i-1], i, LCD_YMAX-data[1][i], CH2COLOR);
   }
 #endif
-  DrawGrid(i);
 }
 
 #ifdef ESP32_C3
@@ -900,11 +378,10 @@ int16_t adc_linearlize(int16_t level) {
 
 void scaleDataArray(byte ad_ch, int trig_point)
 {
-  byte *pdata, ch_mode, range;
+  byte *pdata, ch_mode, range, ch;
   short ch_off;
   uint16_t *idata, *qdata, *rdata;
   long a, b;
-  int ch;
 
   if (ad_ch == ad_ch1) {
     ch_off = ch1_off;
@@ -935,28 +412,47 @@ void scaleDataArray(byte ad_ch, int trig_point)
     if (ch_mode == MODE_INV)
       a = LCD_YMAX - a;
     *pdata++ = (byte) a;
+#ifndef NOWEB
     b = ((*idata++ + ch_off) * VREF[range] + 40) / 80;
     if (b > 4095) b = 4095;
     else if (b < 0) b = 0;
     if (ch_mode == MODE_INV)
       b = 4095 - b;
-#ifndef NOWEB
     *qdata++ = (int16_t) b;
+#else
+    ++idata;
 #endif
   }
   if (rate == 0) {
-    mag(data[sample+ch], 10); // x10 magnification for OLED
+    mag(data[sample+ch], 10); // x10 magnification for display
   } else if (rate == 1) {
-    mag(data[sample+ch], 5);  // x5 magnification for OLED
+    mag(data[sample+ch], 5);  // x5 magnification for display
   } else if (rate == 2) {
-    mag(data[sample+ch], 2);  // x2 magnification for OLED
+    mag(data[sample+ch], 2);  // x2 magnification for display
   }
+#ifndef NOWEB
   if (rate == 0) {
     mag(rdata, 10);           // x10 magnification for WEB
   } else if (rate == 1) {
     mag(rdata, 5);            // x5 magnification for WEB
   } else if (rate == 2) {
     mag(rdata, 2);            // x2 magnification for WEB
+  }
+#endif
+  if (rate < RATE_ROLL) {
+    switch (time_mag) {
+    case 2:
+    case 5:
+    case 10:
+      mag(data[sample+ch], time_mag); // magnify timebase for display
+#ifndef NOWEB
+      mag(rdata, time_mag);           // magnify timebase for WEB
+#endif
+      break;
+    default:  // do nothing
+      time_mag = 1;   // fix odd value
+      break;
+    }
   }
 }
 
@@ -969,11 +465,13 @@ byte adRead(byte ch, byte mode, int off, int i)
   else if (a < 0) a = 0;
   if (mode == MODE_INV)
     a = LCD_YMAX - a;
+#ifndef NOWEB
   long b = (((long)aa+off)*VREF[ch == ad_ch0 ? range0 : range1] + 40) / 80;
   if (b > 4095) b = 4095;
   else if (b < 0) b = 0;
   if (mode == MODE_INV)
     b = 4095 - b;
+#endif
   if (ch == ad_ch1) {
     cap_buf1[i] = aa;
 #ifndef NOWEB
@@ -1028,7 +526,7 @@ void loop() {
         }
         oad = ad;
 
-        if (rate > 9)
+        if (rate > RATE_SLOW)
           CheckSW();      // no need for fast sampling
         if (trig_mode == TRIG_SCAN)
           break;
@@ -1037,7 +535,7 @@ void loop() {
       }
     }
   }
-  
+
   // sample and draw depending on the sampling rate
   if (rate < RATE_ROLL && Start) {
 
@@ -1068,10 +566,11 @@ void loop() {
 //    unsigned long st0 = millis();
     unsigned long st = micros();
     for (int i=0; i<disp_leng; i ++) {
+      if (!full_screen && i >= DISPLNG) break;
       r = r_[rate - RATE_ROLL];  // rate may be changed in loop
       while((st - micros())<r) {
         CheckSW();
-        if (rate<RATE_ROLL)
+        if (rate < RATE_ROLL)
           break;
       }
       if (rate<RATE_ROLL) { // sampling rate has been changed
@@ -1096,7 +595,7 @@ void loop() {
       if (ch1_mode == MODE_OFF) payload[SAMPLES] = -1;
       xTaskNotify(taskHandle, 0, eNoAction);  // notify Websocket server task
 #endif
-      ClearAndDrawDot(i);     
+      ClearAndDrawDot(i);
       display.display();  // 42ms
     }
     // Serial.println(millis()-st0);
@@ -1146,7 +645,7 @@ void draw_screen() {
   display.display();
 }
 
-#define textINFO 54
+#define textINFO (DISPLNG-48)
 void measure_frequency(int ch) {
   int x1, x2;
   freqDuty(ch);
@@ -1164,7 +663,9 @@ void measure_frequency(int ch) {
   display.print("Hz");
   if (fft_mode) return;
   display.setCursor(textINFO + 12, txtLINE1);
-  display.print(waveDuty[ch], 1);  display.print('%');
+  float duty = waveDuty[ch];
+  if (duty > 99.9499) duty = 99.9;
+  display.print(duty, 1);  display.print('%');
 }
 
 void measure_voltage(int ch) {
@@ -1258,7 +759,7 @@ void sample_200us(unsigned int r) { // adc1_get_raw() with timing, channel 0 or 
 }
 
 void plotFFT() {
-  int ylim = 56;
+  int ylim = LCD_HEIGHT - 8;
 
   for (int i = 0; i < FFT_N; i++) {
     vReal[i] = cap_buf[i];
@@ -1277,20 +778,20 @@ void plotFFT() {
     payload[i] = constrain((int)(1024.0 * (db - 1.6)), 0, 4095);
 #endif
     int dat = constrain((int)(15.0 * db - 20), 0, ylim);
-    display.drawFastVLine(i * 2, ylim - dat, dat, TXTCOLOR);
+    display.drawFastVLine(i * 2, ylim - dat, dat, CH1COLOR);
   }
   draw_scale();
 }
 
 void draw_scale() {
-  int ylim = 56;
+  int ylim = LCD_HEIGHT - 8;
   float fhref, nyquist;
   display.setTextColor(TXTCOLOR);
   display.setCursor(0, ylim); display.print("0Hz"); 
   fhref = freqhref();
   nyquist = 5.0e6 / fhref; // Nyquist frequency
-  long inyquist = nyquist;
 #ifndef NOWEB
+  long inyquist = nyquist;
   payload[FFT_N/2] = (short) (inyquist / 1000);
   payload[FFT_N/2+1] = (short) (inyquist % 1000);
 #endif
@@ -1350,6 +851,7 @@ void saveEEPROM() {                   // Save the setting value in EEPROM after 
       EEPROM.write(p++, (ifreq >> 16) & 0xff);
       EEPROM.write(p++, (ifreq >> 24) & 0xff);
       EEPROM.write(p++, dac_cw_mode);
+      EEPROM.write(p++, time_mag);
       EEPROM.commit();    // actually write EEPROM. Necessary for ESP32
     }
   }
@@ -1378,6 +880,7 @@ void set_default() {
   wave_id = 0;    // sine wave
   ifreq = 23841;  // 238.41Hz
   dac_cw_mode = false;
+  time_mag = 1;   // magnify timebase
 }
 
 extern const byte wave_num;
@@ -1424,7 +927,7 @@ void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be 
   *((byte *)&count) = EEPROM.read(p++);     // count low
   *((byte *)&count + 1) = EEPROM.read(p++); // count high
   if (count > 256) ++error;
-  dds_mode = EEPROM.read(p++);              // DDS wave id
+  dds_mode = EEPROM.read(p++);              // DDS mode
   wave_id = EEPROM.read(p++);               // DDS wave id
   if (wave_id >= wave_num) ++error;
   *((byte *)&ifreq) = EEPROM.read(p++);     // ifreq low
@@ -1432,7 +935,9 @@ void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be 
   *((byte *)&ifreq + 2) = EEPROM.read(p++); // ifreq
   *((byte *)&ifreq + 3) = EEPROM.read(p++); // ifreq high
   if (ifreq > 99999L) ++error;
-  dac_cw_mode = EEPROM.read(p++);              // DDS wave id
-  if (error > 0)
+  dac_cw_mode = EEPROM.read(p++);           // DDS wave id
+  time_mag = EEPROM.read(p++);              // magnify timebase
+  if (error > 0) {
     set_default();
+  }
 }
