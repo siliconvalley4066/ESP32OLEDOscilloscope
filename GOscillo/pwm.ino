@@ -110,13 +110,13 @@ void disp_pulse_dty(void) {
   }
 }
 
-void pulse_start() {
+void pulse_start(void) {
   pinMode(GPIO_PIN, OUTPUT);
   ledcAttach(GPIO_PIN, pulse_frq(), p_range);
   setduty();
 }
 
-void pulse_close() {
+void pulse_close(void) {
   ledcDetach(GPIO_PIN);
   pinMode(GPIO_PIN, INPUT_PULLUP);
 }

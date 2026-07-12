@@ -776,6 +776,7 @@ Hz</label>
 </div>
 
 <label>CH1 frequency: </label><label id="ch1_freq"></label>
+
 </body>
 </html>
 )=====";
@@ -851,8 +852,8 @@ void setup1(void * pvParameters) {
 #endif
   // print out the IP address of the ESP32
   Serial.print("WiFi Connected. IP = "); Serial.println(WiFi.localIP());
-//  Serial.print("WiFi Connected. GW = "); Serial.println(WiFi.gatewayIP());
-//  Serial.print("WiFi Connected. DNS = "); Serial.println(WiFi.dnsIP());
+  // Serial.print("WiFi Connected. GW = "); Serial.println(WiFi.gatewayIP());
+  // Serial.print("WiFi Connected. DNS = "); Serial.println(WiFi.dnsIP());
 
   if (MDNS.begin("esp32oscillo")) {
     Serial.println("MDNS responder started");

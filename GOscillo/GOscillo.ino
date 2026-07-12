@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.35
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.36
  * for esp32 by Espressif Systems version 3.3.5
  * The max software loop sampling rates are 10ksps with 2 channels and 20ksps with a channel.
  * In the I2S DMA mode, it can be set up to 250ksps.
@@ -25,7 +25,7 @@
 //#define DISPLAY_IS_SH1107V
 #define SCREEN_WIDTH   128              // OLED display width
 #define SCREEN_HEIGHT   64              // OLED display height
-#define OLED_RESET     -1     // Reset pin # (or -1 if sharing Arduino reset pin)
+#define OLED_RESET      -1      // Reset pin # (or -1 if sharing Arduino reset pin)
 #ifdef DISPLAY_IS_SSD1306
 #include <Adafruit_SSD1306.h>
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -40,7 +40,9 @@ Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, 
 #define BLACK 0
 #endif
 #define EEPROM_START 0
+#ifdef EEPROM_START
 #include <EEPROM.h>
+#endif
 #include "arduinoFFT.h"
 #define FFT_N 128
 double vReal[FFT_N]; // Real part array, actually float type
@@ -70,8 +72,8 @@ extern unsigned short count;
 extern long ifreq;
 extern byte wave_id;
 
-const int LCD_WIDTH = 128;
-const int LCD_HEIGHT = 64;
+#define LCD_WIDTH 128
+#define LCD_HEIGHT 64
 const int LCD_YMAX = 60;
 const int SAMPLES = 128;
 const int NSAMP = 512;
@@ -91,14 +93,14 @@ const long VREF[] = {33, 66, 165, 330, 660}; // reference voltage 3.3V ->  33 : 
                                         //                        -> 660 :  50mV/div
                                         // 3.3V / attn * DOTS_DIV / vdiv
 //const int MILLIVOL_per_dot[] = {100, 50, 20, 10, 5}; // mV/dot
-//const int ac_offset[] PROGMEM = {1676, -186, -1303, -1676, -1862}; // 3 div offset
+//const int ac_offset[] PROGMEM = {1676, -186, -1303, -1676, -1862};  // 3 div offset
 //                              = 3 * vdiv / 3.3 * 4096 - 2048
 const int ac_offset[] PROGMEM = {2917, 434, -1055, -1552, -1800}; // 4 div offset
-//                            = 4 * vdiv / 3.3 * 4096 - 2048
+//                              = 4 * vdiv / 3.3 * 4096 - 2048
 const int MODE_ON = 0;
 const int MODE_INV = 1;
 const int MODE_OFF = 2;
-const char Modes[3][4] PROGMEM = {"ON", "INV", "OFF"};
+const char Modes[3][4] PROGMEM = {" ON", "INV", "OFF"};
 const int TRIG_AUTO = 0;
 const int TRIG_NORM = 1;
 const int TRIG_SCAN = 2;
@@ -143,6 +145,8 @@ bool dac_cw_mode = false;
 int trigger_ad;
 volatile bool wfft, wdds;
 byte time_mag = 1;  // magnify timebase: 1, 2, 5 or 10
+int trigger_pos;
+int mag_pos = 0;
 
 #ifdef ESP32_C3
 #define ADC0PIN   1   // Analog pin for channel 0
@@ -183,6 +187,7 @@ byte time_mag = 1;  // magnify timebase: 1, 2, 5 or 10
 #define CH2COLOR  WHITE
 #define TXTCOLOR  WHITE
 #define TRGCOLOR  WHITE
+#define HIGHCOLOR WHITE
 #define LED_ON    HIGH
 #define LED_OFF   LOW
 
@@ -207,8 +212,12 @@ void setup(){
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // select 3C or 3D (set your OLED I2C address)
 #else
   display.begin(0x3c, true);                  // initialise the library
+#ifdef DISPLAY_IS_SH1107V
+  display.setRotation(1);
+#endif
 #endif
   Wire.setClock(400000);
+  delay(10);
 
 //  Serial.begin(115200);
 //  Serial.printf("CORE1 = %d\n", xPortGetCoreID());
@@ -240,22 +249,23 @@ void setup(){
 #endif
 }
 
+#ifndef NOLCD
 void DrawGrid() {
   int disp_leng;
   if (full_screen) disp_leng = SAMPLES;
   else disp_leng = DISPLNG;
   for (int x=0; x<=disp_leng; x += 2) { // Horizontal Line
-    for (int y=0; y<=LCD_YMAX; y += DOTS_DIV) {
+    for (int y=LCD_YMAX; y>=0; y -= DOTS_DIV) {
       display.drawPixel(x, y, GRIDCOLOR);
-      CheckSW();
     }
   }
+  CheckSW();
   for (int x=0; x<=disp_leng; x += DOTS_DIV ) { // Vertical Line
-    for (int y=0; y<=LCD_YMAX; y += 2) {
+    for (int y=LCD_YMAX; y>=0; y -= 2) {
       display.drawPixel(x, y, GRIDCOLOR);
-      CheckSW();
     }
   }
+  CheckSW();
 }
 
 //unsigned long fcount = 0;
@@ -300,15 +310,19 @@ void display_ac(byte pin) {
 void set_line_color(byte line) {
   if ((item & 0x7) == line) display.setTextColor(BGCOLOR, TXTCOLOR);  // highlight
   else display.setTextColor(TXTCOLOR, BGCOLOR);           // normal
+#if LCD_HEIGHT == 64
   display.setCursor(DISPTXT, 8 * line); // locate curser for printing text
+#elif LCD_HEIGHT == 80
+  display.setCursor(DISPTXT, 10 * line + 1); // locate curser for printing text
+#endif
 }
 
 void DrawGrid(int x) {
   if ((x % DOTS_DIV) == 0) {
-    for (int y=0; y<=LCD_YMAX; y += 2)
+    for (int y=LCD_YMAX; y>=0; y -= 2)
       display.drawPixel(x, y, GRIDCOLOR);
   } else if ((x % 2) == 0)
-    for (int y=0; y<=LCD_YMAX; y += DOTS_DIV)
+    for (int y=LCD_YMAX; y>=0; y -= DOTS_DIV)
       display.drawPixel(x, y, GRIDCOLOR);
 }
 
@@ -330,7 +344,6 @@ void ClearAndDrawGraph() {
     if (ch1_active) {
       display.drawLine(x, LCD_YMAX-data[sample+1][x], x+1, LCD_YMAX-data[sample+1][x+1], CH2COLOR);
     }
-    CheckSW();
   }
 #endif
 }
@@ -358,6 +371,7 @@ void ClearAndDrawDot(int i) {
   }
 #endif
 }
+#endif
 
 #ifdef ESP32_C3
 #define BENDX 3150  // 85% of 4096
@@ -383,11 +397,11 @@ void scaleDataArray(byte ad_ch, int trig_point)
   uint16_t *idata, *qdata, *rdata;
   long a, b;
 
+  trigger_pos = trig_point;
   if (ad_ch == ad_ch1) {
     ch_off = ch1_off;
     ch_mode = ch1_mode;
     range = range1;
-    pdata = data[1];
     idata = &cap_buf1[trig_point];
 #ifndef NOWEB
     qdata = rdata = payload+SAMPLES;
@@ -397,13 +411,13 @@ void scaleDataArray(byte ad_ch, int trig_point)
     ch_off = ch0_off;
     ch_mode = ch0_mode;
     range = range0;
-    pdata = data[0];
     idata = &cap_buf[trig_point];
 #ifndef NOWEB
     qdata = rdata = payload;
 #endif
     ch = 0;
   }
+  pdata = data[ch];
   for (int i = 0; i < SAMPLES; i++) {
     *idata = adc_linearlize(*idata);
     a = ((*idata + ch_off) * VREF[range] + 2048) >> 12;
@@ -424,33 +438,35 @@ void scaleDataArray(byte ad_ch, int trig_point)
 #endif
   }
   if (rate == 0) {
-    mag(data[sample+ch], 10); // x10 magnification for display
+    mag(data[sample+ch], 10, 0);  // x10 magnification for display
   } else if (rate == 1) {
-    mag(data[sample+ch], 5);  // x5 magnification for display
+    mag(data[sample+ch], 5, 0);   // x5 magnification for display
   } else if (rate == 2) {
-    mag(data[sample+ch], 2);  // x2 magnification for display
+    mag(data[sample+ch], 2, 0);   // x2 magnification for display
   }
 #ifndef NOWEB
   if (rate == 0) {
-    mag(rdata, 10);           // x10 magnification for WEB
+    mag(rdata, 10, 0);            // x10 magnification for WEB
   } else if (rate == 1) {
-    mag(rdata, 5);            // x5 magnification for WEB
+    mag(rdata, 5, 0);             // x5 magnification for WEB
   } else if (rate == 2) {
-    mag(rdata, 2);            // x2 magnification for WEB
+    mag(rdata, 2, 0);             // x2 magnification for WEB
   }
 #endif
-  if (rate < RATE_ROLL) {
+  if (rate < RATE_ROLL && RATE_MAG < rate) {
     switch (time_mag) {
     case 2:
     case 5:
     case 10:
-      mag(data[sample+ch], time_mag); // magnify timebase for display
+      mag_pos = constrain(mag_pos, 0, SAMPLES - SAMPLES/time_mag - 5);
+      mag(data[sample+ch], time_mag, mag_pos);  // magnify timebase for display
 #ifndef NOWEB
-      mag(rdata, time_mag);           // magnify timebase for WEB
+      mag(rdata, time_mag, mag_pos);            // magnify timebase for WEB
 #endif
       break;
-    default:  // do nothing
+    default:
       time_mag = 1;   // fix odd value
+      mag_pos = 0;    // reset the position
       break;
     }
   }
@@ -505,9 +521,7 @@ void loop() {
   unsigned long auto_time;
 
   timeExec = 100;
-#ifndef ESP32_C3
-  digitalWrite(LED_BUILTIN, LED_ON);
-#endif
+  led_on();
   if (rate > RATE_DMA) {
     set_trigger_ad();
     auto_time = pow(10, rate / 3) + 5;
@@ -552,9 +566,7 @@ void loop() {
     } else {                // dual channel .5ms, 1ms, 2ms, 5ms, 10ms, 20ms sampling
       sample_dual_ms(HREF[rate] / 10);
     }
-#ifndef ESP32_C3
-    digitalWrite(LED_BUILTIN, LED_OFF);
-#endif
+    led_off();
     draw_screen();
   } else if (Start) { // 50ms - 1000ms sampling
     timeExec = 5000;
@@ -574,7 +586,9 @@ void loop() {
           break;
       }
       if (rate<RATE_ROLL) { // sampling rate has been changed
+#ifndef NOLCD
         display.clearDisplay();
+#endif
         break;
       }
       st += r;
@@ -595,22 +609,26 @@ void loop() {
       if (ch1_mode == MODE_OFF) payload[SAMPLES] = -1;
       xTaskNotify(taskHandle, 0, eNoAction);  // notify Websocket server task
 #endif
+#ifndef NOLCD
       ClearAndDrawDot(i);
       display.display();  // 42ms
+#endif
     }
     // Serial.println(millis()-st0);
-#ifndef ESP32_C3
-    digitalWrite(LED_BUILTIN, LED_OFF);
-#endif
+    led_off();
+#ifndef NOLCD
     DrawGrid();
     if (!full_screen) DrawText();
   } else {
     DrawText();
+#endif
   }
   if (trig_mode == TRIG_ONE)
     Start = false;
   CheckSW();
+#ifdef EEPROM_START
   saveEEPROM();                         // save settings to EEPROM if necessary
+#endif
   if (wdds != dds_mode) {
     if (wdds) {
       dds_setup();
@@ -622,17 +640,25 @@ void loop() {
 }
 
 void draw_screen() {
+#ifndef NOLCD
   display.clearDisplay();
+#endif
   if (wfft != fft_mode) {
     fft_mode = wfft;
   }
   if (fft_mode) {
+#ifndef NOLCD
     DrawText();
+#endif
     plotFFT();
   } else {
+#ifndef NOLCD
     DrawGrid();
     ClearAndDrawGraph();
+    CheckSW();
     if (!full_screen) DrawText();
+    mag_bar();
+#endif
 #ifndef NOWEB
     if (ch0_mode == MODE_OFF) payload[0] = -1;
     if (ch1_mode == MODE_OFF) payload[SAMPLES] = -1;
@@ -642,14 +668,16 @@ void draw_screen() {
   xTaskNotify(taskHandle, 0, eNoAction);  // notify Websocket server task
   vTaskDelay(10);    // wait Web task to send it (adhoc fix)
 #endif
+#ifndef NOLCD
   display.display();
+#endif
 }
 
 #define textINFO (DISPLNG-48)
+#ifndef NOLCD
 void measure_frequency(int ch) {
   int x1, x2;
   freqDuty(ch);
-  display.setTextColor(TXTCOLOR, BGCOLOR);
   display.setCursor(textINFO, txtLINE0);
   float freq = waveFreq[ch];
   if (freq < 999.5)
@@ -662,7 +690,7 @@ void measure_frequency(int ch) {
   }
   display.print("Hz");
   if (fft_mode) return;
-  display.setCursor(textINFO + 12, txtLINE1);
+  display.setCursor(textINFO + 18, txtLINE1);
   float duty = waveDuty[ch];
   if (duty > 99.9499) duty = 99.9;
   display.print(duty, 1);  display.print('%');
@@ -681,6 +709,7 @@ void measure_voltage(int ch) {
   display.setCursor(textINFO, txtLINE4);
   display.print("min");  display.print(vmin); if (vmin >= 0.0) display.print('V');
 }
+#endif
 
 void sample_dual_us(unsigned int r) { // dual channel. r > 67
   if (ch0_mode != MODE_OFF && ch1_mode == MODE_OFF) {
@@ -761,8 +790,12 @@ void sample_200us(unsigned int r) { // adc1_get_raw() with timing, channel 0 or 
 void plotFFT() {
   int ylim = LCD_HEIGHT - 8;
 
+  int j = 0;
+  if (rate <= RATE_DMA) {
+    j = trigger_pos;
+  }
   for (int i = 0; i < FFT_N; i++) {
-    vReal[i] = cap_buf[i];
+    vReal[i] = cap_buf[j++];
     vImag[i] = 0.0;
   }
   FFT.dcRemoval();
@@ -777,8 +810,10 @@ void plotFFT() {
 #ifndef NOWEB
     payload[i] = constrain((int)(1024.0 * (db - 1.6)), 0, 4095);
 #endif
+#ifndef NOLCD
     int dat = constrain((int)(15.0 * db - 20), 0, ylim);
     display.drawFastVLine(i * 2, ylim - dat, dat, CH1COLOR);
+#endif
   }
   draw_scale();
 }
@@ -786,8 +821,10 @@ void plotFFT() {
 void draw_scale() {
   int ylim = LCD_HEIGHT - 8;
   float fhref, nyquist;
+#ifndef NOLCD
   display.setTextColor(TXTCOLOR);
   display.setCursor(0, ylim); display.print("0Hz"); 
+#endif
   fhref = freqhref();
   nyquist = 5.0e6 / fhref; // Nyquist frequency
 #ifndef NOWEB
@@ -795,6 +832,7 @@ void draw_scale() {
   payload[FFT_N/2] = (short) (inyquist / 1000);
   payload[FFT_N/2+1] = (short) (inyquist % 1000);
 #endif
+#ifndef NOLCD
   if (nyquist > 999.0) {
     nyquist = nyquist / 1000.0;
     if (nyquist > 99.5) {
@@ -812,14 +850,30 @@ void draw_scale() {
     display.setCursor(58, ylim); display.print(nyquist/2,0);
     display.setCursor(110, ylim); display.print(nyquist,0);
   }
+#endif
 }
 
 float freqhref() {
   return (float) HREF[rate];
 }
 
+#ifdef ESP32_C3
+void led_on(void) {}
+
+void led_off(void) {}
+#else
+void led_on(void) {
+  digitalWrite(LED_BUILTIN, LED_ON);
+}
+
+void led_off(void) {
+  digitalWrite(LED_BUILTIN, LED_OFF);
+}
+#endif
+
+#ifdef EEPROM_START
 void saveEEPROM() {                   // Save the setting value in EEPROM after waiting a while after the button operation.
-  int p = EEPROM_START;
+  uint16_t p = EEPROM_START;
   if (saveTimer > 0) {                // If the timer value is positive
     saveTimer = saveTimer - timeExec; // Timer subtraction
     if (saveTimer <= 0) {             // if time up
@@ -856,6 +910,7 @@ void saveEEPROM() {                   // Save the setting value in EEPROM after 
     }
   }
 }
+#endif
 
 void set_default() {
   range0 = RANGE_MIN;
@@ -876,7 +931,7 @@ void set_default() {
   duty = 128;     // PWM 50%
   p_range = 16;   // PWM range
   count = 256;    // PWM 1220Hz
-  dds_mode = false;
+  dds_mode = true;
   wave_id = 0;    // sine wave
   ifreq = 23841;  // 238.41Hz
   dac_cw_mode = false;
@@ -885,8 +940,9 @@ void set_default() {
 
 extern const byte wave_num;
 
+#ifdef EEPROM_START
 void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be corrected to default)
-  int p = EEPROM_START, error = 0;
+  uint16_t p = EEPROM_START, error = 0;
 
   range0 = EEPROM.read(p++);                // range0
   if ((range0 < RANGE_MIN) || (range0 > RANGE_MAX)) ++error;
@@ -894,7 +950,7 @@ void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be 
   if (ch0_mode > 2) ++error;
   *((byte *)&ch0_off) = EEPROM.read(p++);     // ch0_off low
   *((byte *)&ch0_off + 1) = EEPROM.read(p++); // ch0_off high
-  if ((ch0_off < -8192) || (ch0_off > 8191)) ++error;
+  if ((ch0_off < -4096) || (ch0_off > 8191)) ++error;
 
   range1 = EEPROM.read(p++);                // range1
   if ((range1 < RANGE_MIN) || (range1 > RANGE_MAX)) ++error;
@@ -902,7 +958,7 @@ void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be 
   if (ch1_mode > 2) ++error;
   *((byte *)&ch1_off) = EEPROM.read(p++);     // ch1_off low
   *((byte *)&ch1_off + 1) = EEPROM.read(p++); // ch1_off high
-  if ((ch1_off < -8192) || (ch1_off > 8191)) ++error;
+  if ((ch1_off < -4096) || (ch1_off > 8191)) ++error;
 
   rate = EEPROM.read(p++);                  // rate
   if ((rate < RATE_MIN) || (rate > RATE_MAX)) ++error;
@@ -935,9 +991,10 @@ void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be 
   *((byte *)&ifreq + 2) = EEPROM.read(p++); // ifreq
   *((byte *)&ifreq + 3) = EEPROM.read(p++); // ifreq high
   if (ifreq > 99999L) ++error;
-  dac_cw_mode = EEPROM.read(p++);           // DDS wave id
+  dac_cw_mode = EEPROM.read(p++);           // DDS CW mode
   time_mag = EEPROM.read(p++);              // magnify timebase
   if (error > 0) {
     set_default();
   }
 }
+#endif
