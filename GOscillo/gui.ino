@@ -266,17 +266,13 @@ void updown_rate(byte sw) {
     orate = rate;
     if (rate > 0) {
       rate --;
-#ifndef ESP32_C3
-      rate_i2s_mode_config();
-#endif
+      rate_dma_mode_config();
     }
   } else if (sw == BTN_LEFT) {  // RATE SLOW
     orate = rate;
     if (rate < RATE_MAX) {
       rate ++;
-#ifndef ESP32_C3
-      rate_i2s_mode_config();
-#endif
+      rate_dma_mode_config();
     } else {
       rate = RATE_MAX;
     }
@@ -403,12 +399,20 @@ void menu1_sw(byte sw) {
       else {
         ch0_mode = MODE_ON;
       }
+#ifdef ESP32_C3
+      orate = rate;
+      rate_dma_mode_config();
+#endif
     } else if (sw == BTN_LEFT) {  // CH0 - ON/OFF
       if (ch0_mode == MODE_OFF) {
         ch0_mode = MODE_ON;
       } else {
         ch0_mode = MODE_OFF;
       }
+#ifdef ESP32_C3
+      orate = rate;
+      rate_dma_mode_config();
+#endif
     }
     break;
   case 2: // CH0 voltage range
@@ -448,6 +452,10 @@ void menu1_sw(byte sw) {
       } else {
         ch1_mode = MODE_OFF;
       }
+#ifdef ESP32_C3
+      orate = rate;
+      rate_dma_mode_config();
+#endif
     }
     break;
   case 6: // CH1 voltage range

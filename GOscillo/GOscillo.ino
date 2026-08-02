@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.36
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.37
  * for esp32 by Espressif Systems version 3.3.5
  * The max software loop sampling rates are 10ksps with 2 channels and 20ksps with a channel.
  * In the I2S DMA mode, it can be set up to 250ksps.
@@ -111,14 +111,24 @@ const int TRIG_E_DN = 1;
 #define RATE_MIN 0
 #define RATE_MAX 19
 #define RATE_NUM 20
+#ifndef ESP32_C3
 #define RATE_DMA 5
 #define RATE_DUAL 7
+#else
+#define RATE_DMA 7
+#define RATE_DUAL 5
+#endif
 #define RATE_SLOW 9
 #define RATE_ROLL 15
 #define RATE_MAG 2
 #define ITEM_MAX 29
+#ifndef ESP32_C3
 const char Rates[RATE_NUM][5] PROGMEM = {" 4us", " 8us", "20us", "40us", "100u", "200u", "500u", " 1ms", " 2ms", " 5ms", "10ms", "20ms", "50ms", "0.1s", "0.2s", "0.5s", " 1s ", " 2s ", " 5s ", " 10s"};
 const unsigned long HREF[] PROGMEM = {40, 40, 40, 40, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000};
+#else
+const char Rates[RATE_NUM][5] PROGMEM = {"12us", "24us", "60us", "120u", "200u", "250u", "500u", " 1ms", " 2ms", " 5ms", "10ms", "20ms", "50ms", "0.1s", "0.2s", "0.5s", " 1s ", " 2s ", " 5s ", " 10s"};
+const unsigned long HREF[] PROGMEM = {120, 120, 120, 120, 200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000};
+#endif
 #define RANGE_MIN 0
 #define RANGE_MAX 4
 #define VRF 3.3
@@ -132,7 +142,8 @@ byte item = 0;      // Default item
 byte menu = 0;      // Default menu
 short ch0_off = 0, ch1_off = 400;
 byte data[2][SAMPLES];                  // keep the number of channels buffer
-uint16_t cap_buf[NSAMP], cap_buf1[NSAMP];
+uint32_t dma_buf[NSAMP*2];
+uint16_t *cap_buf = (uint16_t *)dma_buf, cap_buf1[NSAMP];
 #ifndef NOWEB
 uint16_t payload[SAMPLES*2+2];
 #endif
@@ -244,9 +255,7 @@ void setup(){
   if (dds_mode)
     dds_setup_init();
   orate = RATE_DMA + 1;                 // old rate befor change
-#ifndef ESP32_C3
-  rate_i2s_mode_config();
-#endif
+  rate_dma_mode_config();
 }
 
 #ifndef NOLCD
@@ -554,11 +563,7 @@ void loop() {
   if (rate < RATE_ROLL && Start) {
 
     if (rate <= RATE_DMA) { // channel 0 or 1 I2S DMA sampling (Max 500ksps)
-#ifndef ESP32_C3
-      sample_i2s();
-#else
-      sample_200us(20);
-#endif
+      sample_dma();
     } else if (rate == 6) { // channel 0 or 1 50us sampling
       sample_200us(50);
     } else if (rate >= 7 && rate <= 8) {  // dual channel 100us, 200us sampling
