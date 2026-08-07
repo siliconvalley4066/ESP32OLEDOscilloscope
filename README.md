@@ -11,7 +11,8 @@ You can view the oscilloscope screen on the WEB browser of the PC or the tablet 
 Specifications:
 <li>Dual input channel</li>
 <li>Input voltage range 0 to 3.3V</li>
-<li>12 bit ADC 250 ksps single channel, 10 ksps dual channel</li>
+<li>12 bit ADC 250 ksps single channel, 100 ksps dual channel<br>
+On ESP32-C3 Super Mini, 83.333 ksps single channel, 40 ksps dual channel</li>
 <li>Measures minimum, maximum and average values</li>
 <li>Measures frequency and duty cycle</li>
 <li>Spectrum FFT analysis</li>
@@ -21,9 +22,12 @@ Specifications:
 <br>
 <p>
 Develop environment is:<br>
-Arduino IDE 1.8.19<br>
-esp32 by Espressif Systems version 3.5.5<br>
+Arduino IDE 2.3.10<br>
+esp32 by Espressif Systems version 3.5.11<br>
 CPU speed 240 MHz<br>
+  
+Select the board for ESP32-C3 Super Mini: "Nologo ESP32C3 Super Mini"<br>
+USB CDC On Boot: "Enabled"
 </p>
 
 Libraries:<br>
@@ -49,6 +53,9 @@ const char* pass = "Your Password";
 
 Schematics:<br>
 <img src="ESP32GOscillo2.png">
+
+Schematics for ESP32-C3 Super Mini:<br>
+<img src="ESP32C3GOscillo.png">
 
 Description is here, although it is written in Japanese language:<br>
 https://ss1.xrea.com/harahore.g2.xrea.com/ESP32/ESP32WebOscillo.html
