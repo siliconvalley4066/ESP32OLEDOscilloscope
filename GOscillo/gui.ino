@@ -173,6 +173,20 @@ void CheckSW() {
     saveTimer = 5000;     // set EEPROM save timer to 5 second
   }
 
+  if (wch0_mode != MODE_NUL) {
+    ch0_mode = wch0_mode;
+    wch0_mode = MODE_NUL;
+    ch_mode_config();
+    saveTimer = 5000;     // set EEPROM save timer to 5 second
+  }
+
+  if (wch1_mode != MODE_NUL) {
+    ch1_mode = wch1_mode;
+    wch1_mode = MODE_NUL;
+    ch_mode_config();
+    saveTimer = 5000;     // set EEPROM save timer to 5 second
+  }
+
 /* SW10 Menu
  * SW9  CH1 range down
  * SW8  CH2 range down
@@ -376,6 +390,11 @@ void menu0_sw(byte sw) {
   menu_updown(sw);
 }
 
+void ch_mode_config(void) {
+  orate = rate;
+  rate_dma_mode_config();
+}
+
 void menu1_sw(byte sw) {  
   int diff;
   switch (item - 8) {
@@ -399,20 +418,14 @@ void menu1_sw(byte sw) {
       else {
         ch0_mode = MODE_ON;
       }
-#ifdef ESP32_C3
-      orate = rate;
-      rate_dma_mode_config();
-#endif
+      ch_mode_config();
     } else if (sw == BTN_LEFT) {  // CH0 - ON/OFF
       if (ch0_mode == MODE_OFF) {
         ch0_mode = MODE_ON;
       } else {
         ch0_mode = MODE_OFF;
       }
-#ifdef ESP32_C3
-      orate = rate;
-      rate_dma_mode_config();
-#endif
+      ch_mode_config();
     }
     break;
   case 2: // CH0 voltage range
@@ -452,10 +465,7 @@ void menu1_sw(byte sw) {
       } else {
         ch1_mode = MODE_OFF;
       }
-#ifdef ESP32_C3
-      orate = rate;
-      rate_dma_mode_config();
-#endif
+      ch_mode_config();
     }
     break;
   case 6: // CH1 voltage range

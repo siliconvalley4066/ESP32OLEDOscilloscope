@@ -1,8 +1,8 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.37
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.38
  * for esp32 by Espressif Systems version 3.3.5
- * The max software loop sampling rates are 10ksps with 2 channels and 20ksps with a channel.
- * In the I2S DMA mode, it can be set up to 250ksps.
+ * The max software loop sampling rates are 5ksps with 2 channels.
+ * In the Continuous DMA mode, it can be set up to 100ksps with 2 channels and 250ksps with single channel.
  * + Pulse Generator
  * + PWM DDS Function Generator (23 waveforms)
  * Copyright (c) 2023,2026, Siliconvalley4066
@@ -100,6 +100,7 @@ const int ac_offset[] PROGMEM = {2917, 434, -1055, -1552, -1800}; // 4 div offse
 const int MODE_ON = 0;
 const int MODE_INV = 1;
 const int MODE_OFF = 2;
+const int MODE_NUL = 3;
 const char Modes[3][4] PROGMEM = {" ON", "INV", "OFF"};
 const int TRIG_AUTO = 0;
 const int TRIG_NORM = 1;
@@ -112,8 +113,8 @@ const int TRIG_E_DN = 1;
 #define RATE_MAX 19
 #define RATE_NUM 20
 #ifndef ESP32_C3
-#define RATE_DMA 5
-#define RATE_DUAL 7
+#define RATE_DMA 7
+#define RATE_DUAL 4
 #else
 #define RATE_DMA 7
 #define RATE_DUAL 5
@@ -136,14 +137,15 @@ const char Ranges[5][5] PROGMEM = {" 1V ", "0.5V", "0.2V", "0.1V", "50mV"};
 byte range0 = RANGE_MIN;
 byte range1 = RANGE_MIN;
 byte ch0_mode = MODE_ON, ch1_mode = MODE_ON, rate = 0, orate, wrate = 0;
+byte wch0_mode = MODE_NUL, wch1_mode = MODE_NUL;
 byte trig_mode = TRIG_AUTO, trig_lv = 10, trig_edge = TRIG_E_UP, trig_ch = ad_ch0;
 bool Start = true;  // Start sampling
 byte item = 0;      // Default item
 byte menu = 0;      // Default menu
 short ch0_off = 0, ch1_off = 400;
 byte data[2][SAMPLES];                  // keep the number of channels buffer
-uint32_t dma_buf[NSAMP*2];
-uint16_t *cap_buf = (uint16_t *)dma_buf, cap_buf1[NSAMP];
+uint32_t dma_buf[NSAMP*2], dma_buf1[NSAMP/2];
+uint16_t *cap_buf = (uint16_t *)dma_buf, *cap_buf1 = (uint16_t *)dma_buf1;
 #ifndef NOWEB
 uint16_t payload[SAMPLES*2+2];
 #endif
