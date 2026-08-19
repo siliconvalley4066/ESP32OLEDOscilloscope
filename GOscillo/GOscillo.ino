@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.40
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.41
  * for esp32 by Espressif Systems version 3.3.5
  * The max software loop sampling rates are 5ksps with 2 channels.
  * In the Continuous DMA mode, it can be set up to 100ksps with 2 channels and 250ksps with single channel.
@@ -299,8 +299,10 @@ void fcount_disp() {
   if (!fcount_mode) return;
   if (FreqCount.available()) {
     count = FreqCount.read();
+    if (calib) calibrate(count);
+    calib = false;
+    count = count * compensation;
   }
-  count = count * compensation;
   displayfreq(count);
 }
 
@@ -320,7 +322,7 @@ void displayfreq(unsigned long freq) {
   display.print("Hz");
 }
 
-void calibrate(double freq) {
+void calibrate(unsigned long freq) {
   float references[] = {30e6, 25e6, 24e6, 20e6, 16e6, 12e6, 10e6, 8e6, 6e6, 5e6,
           4e6, 3e6, 2e6, 1e6, 1e5, 32768.0};
   int num = sizeof(references) / sizeof(float);
