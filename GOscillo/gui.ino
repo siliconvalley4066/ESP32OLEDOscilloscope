@@ -623,11 +623,11 @@ void menu3_sw(byte sw) {
         calib = true;
       } else {
         fcount_mode = true;
-        FreqCountESP.begin(4, 1000);
+        FreqCount.begin(1000);
       }
     } else if (sw == BTN_LEFT) {  // off
       if (fcount_mode)
-        FreqCountESP.end();
+        FreqCount.end();
       fcount_mode = false;
     }
     break;

@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.39
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.40
  * for esp32 by Espressif Systems version 3.3.5
  * The max software loop sampling rates are 5ksps with 2 channels.
  * In the Continuous DMA mode, it can be set up to 100ksps with 2 channels and 250ksps with single channel.
@@ -21,7 +21,7 @@
 #define ESP32_C3
 #endif
 #ifndef ESP32_C3
-#include "FreqCountESP.h"
+#include "FreqCountESPgate.h"
 #endif
 //#define NOWEB
 //#define BUTTON5DIR
@@ -297,8 +297,8 @@ void fcount_disp() {
   static unsigned long count = 0;
 
   if (!fcount_mode) return;
-  if (FreqCountESP.available()) {
-    count = FreqCountESP.read();
+  if (FreqCount.available()) {
+    count = FreqCount.read();
   }
   count = count * compensation;
   displayfreq(count);

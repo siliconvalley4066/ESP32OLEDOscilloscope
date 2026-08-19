@@ -5,6 +5,7 @@
 #define GPIO_PIN 16 // should not assign GPIO #36 throough #39
 #define LEDC_BIT_MAX 16
 #endif
+#define LEDC_CHANNEL LEDC_CHANNEL_0
 
 byte duty = 128;      // duty ratio = duty/256
 byte p_range = LEDC_BIT_MAX;    // bit_num 1 - LEDC_BIT_MAX
@@ -33,7 +34,7 @@ void pulse_init() {
     count = constrain(count, 1, 256);
   pinMode(GPIO_PIN, OUTPUT);
   ledcSetClockSource((ledc_clk_cfg_t) LEDC_APB_CLK);
-  ledcAttach(GPIO_PIN, pulse_frq(), p_range);
+  ledcAttachChannel(GPIO_PIN, pulse_frq(), p_range, LEDC_CHANNEL);
   setduty();
 }
 
@@ -106,7 +107,7 @@ void disp_pulse_dty(void) {
 
 void pulse_start(void) {
   pinMode(GPIO_PIN, OUTPUT);
-  ledcAttach(GPIO_PIN, pulse_frq(), p_range);
+  ledcAttachChannel(GPIO_PIN, pulse_frq(), p_range, LEDC_CHANNEL);
   setduty();
 }
 
