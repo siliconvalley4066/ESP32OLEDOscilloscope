@@ -49,7 +49,7 @@ volatile int8_t wavebuf[256];
 volatile unsigned char wavebuf[256];
 #endif
 hw_timer_t * timer = NULL;
-void IRAM_ATTR onTimer();
+void IRAM_ATTR onDDSTimer();
 
 #ifdef ESP32_C3
 void dds_setup_init() {
@@ -72,7 +72,7 @@ void sigmadelta_dds_setup() {
     wp = (unsigned char *) wavetable[wave_id];
     copy_table(wp);
   }
-//  timerAttachInterrupt(timer, &onTimer);
+//  timerAttachInterrupt(timer, &onDDSTimer);
   timerStart(timer);
 }
 
@@ -106,7 +106,7 @@ void pwm_dds_setup() {
     wp = (unsigned char *) wavetable[wave_id];
     memcpy((void*)wavebuf, wp, 256);
   }
-//  timerAttachInterrupt(timer, &onTimer);
+//  timerAttachInterrupt(timer, &onDDSTimer);
   timerStart(timer);
 }
 
@@ -176,7 +176,7 @@ void set_wave(int id) {
 // this is the timebase REFCLOCK for the DDS generator
 // FOUT = (M (REFCLK)) / (2 exp 32)
 // runtime : ? microseconds ( inclusive push and pop)
-void IRAM_ATTR onTimer() {
+void IRAM_ATTR onDDSTimer() {
   phaccu=phaccu+tword_m; // soft DDS, phase accu with 32 bits
   icnt=phaccu >> 24;     // use upper 8 bits for phase accu as frequency information
 #ifdef ESP32_C3
@@ -193,7 +193,7 @@ void IRAM_ATTR onTimer() {
 // 80000000/1000000*200 = 5.00 kHz clock
 void Setup_timer() {
   timer = timerBegin(5000);
-  timerAttachInterrupt(timer, &onTimer);
+  timerAttachInterrupt(timer, &onDDSTimer);
   timerAlarm(timer, 1, true, 0);
 }
 

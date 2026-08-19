@@ -118,7 +118,7 @@ void DrawText() {
       display.print("MSR2");
     else
       display.print("MSR1");
-#if 0
+#ifndef ESP32_C3
     set_line_color(6);
     display.print("FCNT");
     fcount_disp();
@@ -616,16 +616,22 @@ void menu3_sw(byte sw) {
       info_mode &= ~4;
     }
     break;
+#ifndef ESP32_C3
   case 6: // Frequency Counter
-    if (sw == BTN_RIGHT && rate <= RATE_MAX) {  // on
-//      dds_close(); dds_mode = false;
-//      pulse_close();
-      pulse_mode = false; fcount_mode = true;
-//      FreqCount.begin(1000);
-    } else if (sw == BTN_LEFT) {        // off
-      fcount_close();
+    if (sw == BTN_RIGHT) {        // on
+      if (fcount_mode) {
+        calib = true;
+      } else {
+        fcount_mode = true;
+        FreqCountESP.begin(4, 1000);
+      }
+    } else if (sw == BTN_LEFT) {  // off
+      if (fcount_mode)
+        FreqCountESP.end();
+      fcount_mode = false;
     }
     break;
+#endif
   }
   menu_updown(sw);
 }

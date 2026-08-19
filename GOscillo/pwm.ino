@@ -74,6 +74,7 @@ void update_frq(int diff) {
   setduty();
 }
 
+#ifndef NOLCD
 void disp_pulse_frq(void) {
   float freq = pulse_frq();
   if (freq < 10.0) {
@@ -93,22 +94,15 @@ void disp_pulse_frq(void) {
   } else {
     display.print(freq * 1e-6, 3); display.print('M');
   }
-  display.print("Hz");
+  display.print("Hz ");
 }
 
 void disp_pulse_dty(void) {
-  static bool sp = true;
-  float fduty = duty*100.0/256.0;
-  display.print(fduty, 1); display.print('%');
-  if (fduty < 9.95) {
-    if (sp) {
-      display.print(' ');
-      sp = false;
-    }
-  } else {
-    sp = true;
-  }
+  if (duty < 26)    // < 10.0%
+    display.print(' ');
+  display.print(duty*100.0/256.0, 1); display.print("%");
 }
+#endif
 
 void pulse_start(void) {
   pinMode(GPIO_PIN, OUTPUT);

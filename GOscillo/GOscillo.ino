@@ -1,10 +1,11 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.38
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.39
  * for esp32 by Espressif Systems version 3.3.5
  * The max software loop sampling rates are 5ksps with 2 channels.
  * In the Continuous DMA mode, it can be set up to 100ksps with 2 channels and 250ksps with single channel.
  * + Pulse Generator
  * + PWM DDS Function Generator (23 waveforms)
+ * + Frequency Counter
  * Copyright (c) 2023,2026, Siliconvalley4066
  */
 /*
@@ -18,6 +19,9 @@
 
 #if defined(ARDUINO_NOLOGO_ESP32C3_SUPER_MINI) || defined(ARDUINO_ESP32C3_DEV) || defined(ARDUINO_WAVESHARE_ESP32_C3_ZERO)
 #define ESP32_C3
+#endif
+#ifndef ESP32_C3
+#include "FreqCountESP.h"
 #endif
 //#define NOWEB
 //#define BUTTON5DIR
@@ -122,11 +126,12 @@ const int TRIG_E_DN = 1;
 #define RATE_SLOW 9
 #define RATE_ROLL 15
 #define RATE_MAG 2
-#define ITEM_MAX 29
 #ifndef ESP32_C3
+#define ITEM_MAX 30
 const char Rates[RATE_NUM][5] PROGMEM = {" 4us", " 8us", "20us", "40us", "100u", "200u", "500u", " 1ms", " 2ms", " 5ms", "10ms", "20ms", "50ms", "0.1s", "0.2s", "0.5s", " 1s ", " 2s ", " 5s ", " 10s"};
 const unsigned long HREF[] PROGMEM = {40, 40, 40, 40, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000};
 #else
+#define ITEM_MAX 29
 const char Rates[RATE_NUM][5] PROGMEM = {"12us", "24us", "60us", "120u", "200u", "250u", "500u", " 1ms", " 2ms", " 5ms", "10ms", "20ms", "50ms", "0.1s", "0.2s", "0.5s", " 1s ", " 2s ", " 5s ", " 10s"};
 const unsigned long HREF[] PROGMEM = {120, 120, 120, 120, 200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000};
 #endif
@@ -158,6 +163,10 @@ bool dac_cw_mode = false;
 int trigger_ad;
 volatile bool wfft, wdds;
 byte time_mag = 1;  // magnify timebase: 1, 2, 5 or 10
+double compensation = 1.0;  // compensation for frequency counter
+#ifndef ESP32_C3
+boolean calib = false;      // calibrate flag for frequency counter
+#endif
 int trigger_pos;
 int mag_pos = 0;
 
@@ -234,8 +243,12 @@ void setup(){
 
 //  Serial.begin(115200);
 //  Serial.printf("CORE1 = %d\n", xPortGetCoreID());
-  EEPROM.begin(32);                     // set EEPROM size. Necessary for ESP32
+#ifdef EEPROM_START
+  EEPROM.begin(64);                     // set EEPROM size. Necessary for ESP32
   loadEEPROM();                         // read last settings from EEPROM
+#else
+  set_default();
+#endif
 //  set_default();
   menu = item >> 3;
   wfft = fft_mode;
@@ -279,24 +292,47 @@ void DrawGrid() {
   CheckSW();
 }
 
-//unsigned long fcount = 0;
-//const double freq_ratio = 20000.0 / 19987.0;
-
+#ifndef ESP32_C3
 void fcount_disp() {
+  static unsigned long count = 0;
+
   if (!fcount_mode) return;
-//  if (FreqCount.available()) {
-//    fcount = FreqCount.read();
-//    fcount = fcount * freq_ratio; // compensate the ceramic osc
-//  }
-//  display.setTextColor(TXTCOLOR, BGCOLOR); display.setCursor(74, 48);
-//  display.print(fcount); display.print("Hz");
+  if (FreqCountESP.available()) {
+    count = FreqCountESP.read();
+  }
+  count = count * compensation;
+  displayfreq(count);
 }
 
-void fcount_close() {
-  if (!fcount_mode) return;
-  fcount_mode = false;
-//  FreqCount.end();
+void displayfreq(unsigned long freq) {
+  display.setTextColor(TXTCOLOR, BGCOLOR);
+  String ss = String(freq);
+  int l = ss.length();
+  int n = l;
+  if (l > 3) ++n;
+  if (l > 6) ++n;
+  display.setCursor(DISPLNG - 18 - 6 * n, txtLINE6);
+  for (int i = 0; i < l; ++i) {
+    display.print(ss[i]);
+    if ((l-i) == 7) display.print(',');
+    if ((l-i) == 4) display.print(',');
+  }
+  display.print("Hz");
 }
+
+void calibrate(double freq) {
+  float references[] = {30e6, 25e6, 24e6, 20e6, 16e6, 12e6, 10e6, 8e6, 6e6, 5e6,
+          4e6, 3e6, 2e6, 1e6, 1e5, 32768.0};
+  int num = sizeof(references) / sizeof(float);
+  for (int i = 0; i < num; ++i) {
+    double ref = (double) references[i];
+    if ((ref * 0.99995) < freq && freq < (ref * 1.00005)) { // 50ppm
+      compensation = ref / (double) freq;
+      break;
+    }
+  }
+}
+#endif
 
 void display_range(byte rng) {
   display.print(Ranges[rng]);
@@ -385,7 +421,7 @@ void ClearAndDrawDot(int i) {
 #endif
 
 #ifdef ESP32_C3
-#define BENDX 3150  // 85% of 4096
+#define BENDX 3150  // 76% of 4096
 #define BENDY 3072  // 75% of 4096
 #else
 #define BENDX 3480  // 85% of 4096
@@ -448,31 +484,23 @@ void scaleDataArray(byte ad_ch, int trig_point)
     ++idata;
 #endif
   }
+  int mag_mag = time_mag;
   if (rate == 0) {
-    mag(data[sample+ch], 10, 0);  // x10 magnification for display
+    mag_mag = 10; mag_pos = 0;  // x10 magnification for display
   } else if (rate == 1) {
-    mag(data[sample+ch], 5, 0);   // x5 magnification for display
+    mag_mag = 5; mag_pos = 0;   // x5 magnification for display
   } else if (rate == 2) {
-    mag(data[sample+ch], 2, 0);   // x2 magnification for display
+    mag_mag = 2; mag_pos = 0;   // x2 magnification for display
   }
-#ifndef NOWEB
-  if (rate == 0) {
-    mag(rdata, 10, 0);            // x10 magnification for WEB
-  } else if (rate == 1) {
-    mag(rdata, 5, 0);             // x5 magnification for WEB
-  } else if (rate == 2) {
-    mag(rdata, 2, 0);             // x2 magnification for WEB
-  }
-#endif
-  if (rate < RATE_ROLL && RATE_MAG < rate) {
-    switch (time_mag) {
+  if (rate < RATE_ROLL) {
+    switch (mag_mag) {
     case 2:
     case 5:
     case 10:
-      mag_pos = constrain(mag_pos, 0, SAMPLES - SAMPLES/time_mag - 5);
-      mag(data[sample+ch], time_mag, mag_pos);  // magnify timebase for display
+      mag_pos = constrain(mag_pos, 0, SAMPLES - SAMPLES/mag_mag - 5);
+      mag(data[sample+ch], mag_mag, mag_pos);   // magnify timebase for display
 #ifndef NOWEB
-      mag(rdata, time_mag, mag_pos);            // magnify timebase for WEB
+      mag(rdata, mag_mag, mag_pos);             // magnify timebase for WEB
 #endif
       break;
     default:
@@ -564,7 +592,7 @@ void loop() {
   // sample and draw depending on the sampling rate
   if (rate < RATE_ROLL && Start) {
 
-    if (rate <= RATE_DMA) { // channel 0 or 1 I2S DMA sampling (Max 500ksps)
+    if (rate <= RATE_DMA) { // channel 0 or 1 DMA sampling (Max 250ksps)
       sample_dma();
     } else if (rate == 6) { // channel 0 or 1 50us sampling
       sample_200us(50);
@@ -681,10 +709,10 @@ void draw_screen() {
 }
 
 #define textINFO (DISPLNG-48)
-#ifndef NOLCD
 void measure_frequency(int ch) {
   int x1, x2;
   freqDuty(ch);
+#ifndef NOLCD
   display.setCursor(textINFO, txtLINE0);
   float freq = waveFreq[ch];
   if (freq < 999.5)
@@ -701,6 +729,7 @@ void measure_frequency(int ch) {
   float duty = waveDuty[ch];
   if (duty > 99.9499) duty = 99.9;
   display.print(duty, 1);  display.print('%');
+#endif
 }
 
 void measure_voltage(int ch) {
@@ -709,14 +738,15 @@ void measure_voltage(int ch) {
   float vavr = VRF * dataAve[ch] / 40950.0;
   float vmax = VRF * dataMax[ch] / 4095.0;
   float vmin = VRF * dataMin[ch] / 4095.0;
+#ifndef NOLCD
   display.setCursor(textINFO, txtLINE2);
   display.print("max");  display.print(vmax); if (vmax >= 0.0) display.print('V');
   display.setCursor(textINFO, txtLINE3);
   display.print("avr");  display.print(vavr); if (vavr >= 0.0) display.print('V');
   display.setCursor(textINFO, txtLINE4);
   display.print("min");  display.print(vmin); if (vmin >= 0.0) display.print('V');
-}
 #endif
+}
 
 void sample_dual_us(unsigned int r) { // dual channel. r > 67
   if (ch0_mode != MODE_OFF && ch1_mode == MODE_OFF) {
@@ -763,7 +793,7 @@ void sample_dual_ms(unsigned int r) { // dual channel. r > 500
       cap_buf1[i] = adc1_get_raw((adc1_channel_t) ad_ch1);
     }
   }
-  if (ch0_mode == MODE_OFF) memset(data[0], 0, SAMPLES);
+//  if (ch0_mode == MODE_OFF) memset(data[0], 0, SAMPLES);
 //  if (ch1_mode == MODE_OFF) memset(data[1], 0, SAMPLES);
   scaleDataArray(ad_ch0, 0);
   scaleDataArray(ad_ch1, 0);
@@ -864,7 +894,7 @@ float freqhref() {
   return (float) HREF[rate];
 }
 
-#ifdef ESP32_C3
+#if defined(ESP32_C3) && !defined(NOLCD)
 void led_on(void) {}
 
 void led_off(void) {}
@@ -913,6 +943,9 @@ void saveEEPROM() {                   // Save the setting value in EEPROM after 
       EEPROM.write(p++, (ifreq >> 24) & 0xff);
       EEPROM.write(p++, dac_cw_mode);
       EEPROM.write(p++, time_mag);
+      byte *q = (byte *) &compensation;
+      for (int i = 0; i < 8; ++i)
+        EEPROM.write(p++, *q++);
       EEPROM.commit();    // actually write EEPROM. Necessary for ESP32
     }
   }
@@ -943,6 +976,7 @@ void set_default() {
   ifreq = 23841;  // 238.41Hz
   dac_cw_mode = false;
   time_mag = 1;   // magnify timebase
+  compensation = 1.0; // frequency counter
 }
 
 extern const byte wave_num;
@@ -957,7 +991,7 @@ void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be 
   if (ch0_mode > 2) ++error;
   *((byte *)&ch0_off) = EEPROM.read(p++);     // ch0_off low
   *((byte *)&ch0_off + 1) = EEPROM.read(p++); // ch0_off high
-  if ((ch0_off < -4096) || (ch0_off > 8191)) ++error;
+  if ((ch0_off < -8192) || (ch0_off > 8191)) ++error;
 
   range1 = EEPROM.read(p++);                // range1
   if ((range1 < RANGE_MIN) || (range1 > RANGE_MAX)) ++error;
@@ -965,7 +999,7 @@ void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be 
   if (ch1_mode > 2) ++error;
   *((byte *)&ch1_off) = EEPROM.read(p++);     // ch1_off low
   *((byte *)&ch1_off + 1) = EEPROM.read(p++); // ch1_off high
-  if ((ch1_off < -4096) || (ch1_off > 8191)) ++error;
+  if ((ch1_off < -8192) || (ch1_off > 8191)) ++error;
 
   rate = EEPROM.read(p++);                  // rate
   if ((rate < RATE_MIN) || (rate > RATE_MAX)) ++error;
@@ -1000,6 +1034,11 @@ void loadEEPROM() { // Read setting values from EEPROM (abnormal values will be 
   if (ifreq > 99999L) ++error;
   dac_cw_mode = EEPROM.read(p++);           // DDS CW mode
   time_mag = EEPROM.read(p++);              // magnify timebase
+  byte *q = (byte *) &compensation;
+  for (int i = 0; i < 8; ++i)
+    *q++ = EEPROM.read(p++);
+  if (compensation < 1.002 && compensation > 0.998) ; // OK
+  else ++error;
   if (error > 0) {
     set_default();
   }
