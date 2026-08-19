@@ -9,17 +9,18 @@ The settings are controled by four tactile switches and also on the WEB page.
 You can view the oscilloscope screen on the WEB browser of the PC or the tablet or the smartphone.
 
 Specifications:
-<li>Dual input channel</li>
-<li>Input voltage range 0 to 3.3V</li>
-<li>12 bit ADC 250 ksps single channel, 100 ksps dual channel<br>
-On ESP32-C3 Super Mini, 83.333 ksps single channel, 40 ksps dual channel</li>
-<li>Measures minimum, maximum and average values</li>
-<li>Measures frequency and duty cycle</li>
-<li>Spectrum FFT analysis</li>
-<li>Sampling rate selection</li>
-<li>Built in Pulse Generator</li>
-<li>Built in DDS Function Generator</li>
-<br>
+- Dual input channel
+- Input voltage range 0 to 3.3V
+- 12 bit ADC 250 ksps single channel, 100 ksps dual channel<br>
+On ESP32-C3 Super Mini, 83.333 ksps single channel, 40 ksps dual channel
+- Measures minimum, maximum and average values
+- Measures frequency and duty cycle
+- Spectrum FFT analysis
+- Sampling rate selection
+- Built in Pulse Generator
+- Built in DDS Function Generator
+- Built in Frequency Counter 1Hz - 32MHz (Max 40MHz)
+
 <p>
 Develop environment is:<br>
 Arduino IDE 2.3.10<br>
