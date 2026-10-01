@@ -24,7 +24,7 @@ On ESP32-C3 Super Mini, 83.333 ksps single channel, 40 ksps dual channel
 <p>
 Develop environment is:<br>
 Arduino IDE 2.3.10<br>
-esp32 by Espressif Systems version 3.3.11<br>
+esp32 by Espressif Systems version 3.3.12<br>
 CPU speed 240 MHz<br>
   
 Select the board for ESP32-C3 Super Mini: "Nologo ESP32C3 Super Mini"<br>
