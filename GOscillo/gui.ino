@@ -540,7 +540,7 @@ void menu2_sw(byte sw) {
       } else {
         pulse_start();
       }
-      update_frq(0);
+      setduty();
       pulse_mode = true;
     } else if (sw == BTN_LEFT) {  // -
       if (pulse_mode) {
@@ -548,7 +548,7 @@ void menu2_sw(byte sw) {
       } else {
         pulse_start();
       }
-      update_frq(0);
+      setduty();
       pulse_mode = true;
     }
     break;

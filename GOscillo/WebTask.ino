@@ -70,11 +70,11 @@ void handle_ch2_mode() {
   if (val != NULL) {
     // Serial.println(val);
     if (val == "chon") {
-      wch1_mode = MODE_ON;       // CH2 ON
+      wch1_mode = MODE_ON;      // CH2 ON
     } else if (val == "chinv") {
-      wch1_mode = MODE_INV;      // CH2 INV
+      wch1_mode = MODE_INV;     // CH2 INV
     } else if (val == "choff") {
-      wch1_mode = MODE_OFF;      // CH2 OFF
+      wch1_mode = MODE_OFF;     // CH2 OFF
     }
     server.send(200, "text/html", "OK");  // response 200, send OK
   }
