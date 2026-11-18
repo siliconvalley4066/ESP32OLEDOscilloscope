@@ -1,5 +1,5 @@
 /*
- * ESP32 Oscilloscope using a 128x64 OLED Version 1.43
+ * ESP32 Oscilloscope using a 128x64 OLED Version 1.44
  * for esp32 by Espressif Systems version 3.3.11
  * The max software loop sampling rates are 5ksps with 2 channels.
  * In the Continuous DMA mode, it can be set up to 100ksps with 2 channels and 250ksps with single channel.
